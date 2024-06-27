@@ -17,27 +17,36 @@ uint _draw_id;
 uint _material_params;
 
 #ifdef USE_VERTEX_COMPRESSION
+// Input vertex attributes
 in uvec4 a_PosId;
 in vec4 a_Color;
 in vec2 a_TexCoord;
 in ivec2 a_LightCoord;
 
-#if !defined(VERT_POS_SCALE)
-#error "VERT_POS_SCALE not defined"
-#elif !defined(VERT_POS_OFFSET)
-#error "VERT_POS_OFFSET not defined"
-#elif !defined(VERT_TEX_SCALE)
-#error "VERT_TEX_SCALE not defined"
+#if !defined(VERT_POS_SCALE) || !defined(VERT_POS_OFFSET) || !defined(VERT_TEX_SCALE)
+#error "Vertex compression scales not defined"
 #endif
 
-void _vert_init() {
-    _vert_position = (vec3(a_PosId.xyz) * VERT_POS_SCALE + VERT_POS_OFFSET);
-    _vert_tex_diffuse_coord = (a_TexCoord * VERT_TEX_SCALE);
-    _vert_tex_light_coord = a_LightCoord;
-    _vert_color = a_Color;
+// Constants for bit manipulation
+const uint DRAW_ID_MASK = 0xFF00u;
+const uint MATERIAL_PARAMS_MASK = 0xFFu;
 
-    _draw_id = (a_PosId.w >> 8u) & 0xFFu;
-    _material_params = (a_PosId.w >> 0u) & 0xFFu;
+// Function to initialize vertex attributes
+void _vert_init() {
+    // Calculate vertex position
+    _vert_position = vec3(a_PosId.xyz) * VERT_POS_SCALE + VERT_POS_OFFSET;
+
+    // Calculate texture coordinates
+    _vert_tex_diffuse_coord = a_TexCoord * VERT_TEX_SCALE;
+    _vert_tex_light_coord = a_LightCoord;
+
+    // Extract draw ID and material parameters
+    uint posIdW = a_PosId.w;
+    _draw_id = (posIdW & DRAW_ID_MASK) >> 8u;
+    _material_params = posIdW & MATERIAL_PARAMS_MASK;
+
+    // Assign vertex color
+    _vert_color = a_Color;
 }
 
 #else
