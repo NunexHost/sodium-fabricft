@@ -2,20 +2,20 @@
 
 #import <sodium:include/fog.glsl>
 
-in vec4 v_Color; // The interpolated vertex color
-in vec2 v_TexCoord; // The interpolated block texture coordinates
-in float v_FragDistance; // The fragment's distance from the camera
+in vec4 v_Color;
+in vec2 v_TexCoord;
+in float v_FragDistance;
 
 in float v_MaterialMipBias;
 in float v_MaterialAlphaCutoff;
 
-uniform sampler2D u_BlockTex; // The block texture
+uniform sampler2D u_BlockTex;
 
-uniform vec4 u_FogColor; // The color of the shader fog
-uniform float u_FogStart; // The starting position of the shader fog
-uniform float u_FogEnd; // The ending position of the shader fog
+uniform vec4 u_FogColor;
+uniform float u_FogStart;
+uniform float u_FogEnd;
 
-out vec4 fragColor; // The output fragment for the color framebuffer
+out vec4 fragColor;
 
 void main() {
     vec4 diffuseColor = texture(u_BlockTex, v_TexCoord, v_MaterialMipBias);
@@ -26,11 +26,8 @@ void main() {
     }
 #endif
 
-    // Apply per-vertex color
-    diffuseColor.rgb *= v_Color.rgb;
+    // Combine per-vertex color and ambient occlusion "shade"
+    vec3 finalColor = diffuseColor.rgb * v_Color.rgb * v_Color.a;
 
-    // Apply ambient occlusion "shade"
-    diffuseColor.rgb *= v_Color.a;
-
-    fragColor = _linearFog(diffuseColor, v_FragDistance, u_FogColor, u_FogStart, u_FogEnd);
+    fragColor = _linearFog(vec4(finalColor, diffuseColor.a), v_FragDistance, u_FogColor, u_FogStart, u_FogEnd);
 }
