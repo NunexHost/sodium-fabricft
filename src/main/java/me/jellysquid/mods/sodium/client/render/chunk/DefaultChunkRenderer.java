@@ -83,47 +83,40 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
     }
 
     private static void fillCommandBuffer(MultiDrawBatch batch,
-                                          RenderRegion renderRegion,
-                                          SectionRenderDataStorage renderDataStorage,
-                                          ChunkRenderList renderList,
-                                          CameraTransform camera,
-                                          TerrainRenderPass pass,
-                                          boolean useBlockFaceCulling) {
-        batch.clear();
+                                      RenderRegion renderRegion,
+                                      SectionRenderDataStorage renderDataStorage,
+                                      ChunkRenderList renderList,
+                                      CameraTransform camera,
+                                      TerrainRenderPass pass,
+                                      boolean useBlockFaceCulling) {
+    batch.clear();
 
-        var iterator = renderList.sectionsWithGeometryIterator(pass.isReverseOrder());
+    Iterator<Byte> iterator = renderList.sectionsWithGeometryIterator(pass.isReverseOrder());
 
-        if (iterator == null) {
-            return;
+    if (iterator == null) {
+        return;
+    }
+
+    int originX = renderRegion.getChunkX();
+    int originY = renderRegion.getChunkY();
+    int originZ = renderRegion.getChunkZ();
+
+    while (iterator.hasNext()) {
+        byte sectionIndex = iterator.next();
+
+        int chunkX = originX + LocalSectionIndex.unpackX(sectionIndex);
+        int chunkY = originY + LocalSectionIndex.unpackY(sectionIndex);
+        int chunkZ = originZ + LocalSectionIndex.unpackZ(sectionIndex);
+
+        long pMeshData = renderDataStorage.getDataPointer(sectionIndex);
+
+        int slices = useBlockFaceCulling ? getVisibleFaces(camera.intX, camera.intY, camera.intZ, chunkX, chunkY, chunkZ) : ModelQuadFacing.ALL;
+        slices &= SectionRenderDataUnsafe.getSliceMask(pMeshData);
+
+        if (slices != 0) {
+            addDrawCommands(batch, pMeshData, slices);
         }
-
-        int originX = renderRegion.getChunkX();
-        int originY = renderRegion.getChunkY();
-        int originZ = renderRegion.getChunkZ();
-
-        while (iterator.hasNext()) {
-            int sectionIndex = iterator.nextByteAsInt();
-
-            int chunkX = originX + LocalSectionIndex.unpackX(sectionIndex);
-            int chunkY = originY + LocalSectionIndex.unpackY(sectionIndex);
-            int chunkZ = originZ + LocalSectionIndex.unpackZ(sectionIndex);
-
-            var pMeshData = renderDataStorage.getDataPointer(sectionIndex);
-
-            int slices;
-
-            if (useBlockFaceCulling) {
-                slices = getVisibleFaces(camera.intX, camera.intY, camera.intZ, chunkX, chunkY, chunkZ);
-            } else {
-                slices = ModelQuadFacing.ALL;
-            }
-
-            slices &= SectionRenderDataUnsafe.getSliceMask(pMeshData);
-
-            if (slices != 0) {
-                addDrawCommands(batch, pMeshData, slices);
-            }
-        }
+    }
     }
 
     @SuppressWarnings("IntegerMultiplicationImplicitCastToLong")
