@@ -65,10 +65,16 @@ public class ModelPartMixin implements ModelPartData {
     @Unique
     private ModelCuboid[] sodium$cuboids;
 
+    @Unique
+    private boolean sodium$needsUpdate; // Flag to track changes requiring cuboid updates
+
     @Inject(method = "<init>", at = @At("RETURN"))
     private void onInit(List<ModelPart.Cuboid> cuboids, Map<String, ModelPart> children, CallbackInfo ci) {
+        this.sodium$needsUpdate = true;
+
         var copies = new ModelCuboid[cuboids.size()];
 
+        // Copy cuboids to avoid modifying the original list
         for (int i = 0; i < cuboids.size(); i++) {
             var accessor = (ModelCuboidAccessor) cuboids.get(i);
             copies[i] = accessor.sodium$copy();
@@ -78,9 +84,15 @@ public class ModelPartMixin implements ModelPartData {
         this.sodium$children = children.values()
                 .toArray(ModelPart[]::new);
 
-        // Try to catch errors caused by mods touching the collections after we've copied everything.
+        // Make the collections immutable to prevent accidental modifications
         this.cuboids = Collections.unmodifiableList(this.cuboids);
         this.children = Collections.unmodifiableMap(this.children);
+    }
+
+    // Inject into any method that modifies cuboid data
+    @Inject(method = {"setPivot", "setRotation", "setScale", "setHidden"}, at = @At("RETURN"))
+    private void onModelPartUpdate(CallbackInfo ci) {
+        this.sodium$needsUpdate = true;
     }
 
     @Inject(method = "render(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumer;III)V", at = @At("HEAD"), cancellable = true)
@@ -93,7 +105,34 @@ public class ModelPartMixin implements ModelPartData {
 
         ci.cancel();
 
+        // Update cuboid data if necessary
+        if (this.sodium$needsUpdate) {
+            this.updateCuboids();
+            this.sodium$needsUpdate = false;
+        }
+
+        // Render using the immediate mode renderer
         EntityRenderer.render(matrices, writer, (ModelPart) (Object) this, light, overlay, ColorARGB.toABGR(color));
+    }
+
+    // Update cuboid data based on current model part properties
+    private void updateCuboids() {
+        for (int i = 0; i < this.sodium$cuboids.length; i++) {
+            var cuboid = this.sodium$cuboids[i];
+            var originalCuboid = this.cuboids.get(i);
+
+            // Apply transformations from the model part to the cuboid
+            cuboid.setPivot(originalCuboid.origin.x * (1.0f / 16.0f), originalCuboid.origin.y * (1.0f / 16.0f), originalCuboid.origin.z * (1.0f / 16.0f));
+            cuboid.setSize(originalCuboid.size.x * (1.0f / 16.0f), originalCuboid.size.y * (1.0f / 16.0f), originalCuboid.size.z * (1.0f / 16.0f));
+            cuboid.setOffset(originalCuboid.offset.x * (1.0f / 16.0f), originalCuboid.offset.y * (1.0f / 16.0f), originalCuboid.offset.z * (1.0f / 16.0f));
+            cuboid.setRotation(originalCuboid.rotation.x, originalCuboid.rotation.y, originalCuboid.rotation.z);
+            cuboid.setMirror(originalCuboid.mirror);
+
+            // Apply scaling and rotation from the model part
+            cuboid.scale(this.xScale, this.yScale, this.zScale);
+            cuboid.rotate(this.roll, this.yaw, this.pitch);
+            cuboid.translate(this.pivotX * (1.0f / 16.0f), this.pivotY * (1.0f / 16.0f), this.pivotZ * (1.0f / 16.0f));
+        }
     }
 
     /**
@@ -102,17 +141,7 @@ public class ModelPartMixin implements ModelPartData {
      */
     @Overwrite
     public void rotate(MatrixStack matrixStack) {
-        if (this.pivotX != 0.0F || this.pivotY != 0.0F || this.pivotZ != 0.0F) {
-            matrixStack.translate(this.pivotX * (1.0f / 16.0f), this.pivotY * (1.0f / 16.0f), this.pivotZ * (1.0f / 16.0f));
-        }
-
-        if (this.pitch != 0.0F || this.yaw != 0.0F || this.roll != 0.0F) {
-            MatrixHelper.rotateZYX(matrixStack.peek(), this.roll, this.yaw, this.pitch);
-        }
-
-        if (this.xScale != 1.0F || this.yScale != 1.0F || this.zScale != 1.0F) {
-            matrixStack.scale(this.xScale, this.yScale, this.zScale);
-        }
+        // No need to apply transformations here, they are already baked into the cuboids
     }
 
     @Override
