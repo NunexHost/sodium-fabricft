@@ -72,7 +72,7 @@ public class OcclusionCuller {
                 connections &= getOutwardDirections(viewport.getChunkCoord(), section);
             }
 
-            visitNeighbors(writeQueue, section, connections, frame);
+            visitNeighbors(writeQueue, section, connections, frame, viewport); // Pass viewport here
         }
     }
 
@@ -81,7 +81,7 @@ public class OcclusionCuller {
     }
 
     // This method is performance-critical, so we optimize it for speed.
-    private void visitNeighbors(final WriteQueue<RenderSection> queue, RenderSection section, int outgoing, int frame) {
+    private void visitNeighbors(final WriteQueue<RenderSection> queue, RenderSection section, int outgoing, int frame, Viewport viewport) { // Add viewport as argument
         // Only traverse into neighbors which are actually present.
         // This avoids a null-check on each invocation to enqueue, and since the compiler will see that a null
         // is never encountered (after profiling), it will optimize it away.
@@ -229,7 +229,7 @@ public class OcclusionCuller {
             outgoing = GraphDirectionSet.ALL;
         }
 
-        visitNeighbors(queue, section, outgoing, frame);
+        visitNeighbors(queue, section, outgoing, frame, viewport); // Pass viewport here
     }
 
     // Enqueues sections that are inside the viewport using diamond spiral iteration to avoid sorting and ensure a
@@ -294,14 +294,25 @@ public class OcclusionCuller {
             return;
         }
 
-        visitNode(queue, section, GraphDirectionSet.of(direction), frame);
+        visitNode(queue, section, GraphDirectionSet.of(direction), frame, viewport); // Pass viewport here
     }
 
     private RenderSection getRenderSection(int x, int y, int z) {
         return this.sections.get(ChunkSectionPos.asLong(x, y, z));
     }
 
+    // Method to enqueue a section and update its incoming directions.
+    private void visitNode(WriteQueue<RenderSection> queue, RenderSection section, int incoming, int frame, Viewport viewport) { 
+        if (section.getLastVisibleFrame() != frame) {
+            section.setLastVisibleFrame(frame);
+            section.setIncomingDirections(GraphDirectionSet.NONE);
+            queue.enqueue(section);
+        }
+
+        section.addIncomingDirections(incoming);
+    }
+
     public interface Visitor {
         void visit(RenderSection section, boolean visible);
     }
-                }
+}
