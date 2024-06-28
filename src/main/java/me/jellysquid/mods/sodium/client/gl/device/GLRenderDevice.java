@@ -8,7 +8,10 @@ import me.jellysquid.mods.sodium.client.gl.sync.GlFence;
 import me.jellysquid.mods.sodium.client.gl.tessellation.*;
 import me.jellysquid.mods.sodium.client.gl.util.EnumBitField;
 import net.minecraft.client.render.BufferRenderer;
-import org.lwjgl.opengl.*;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
 
 import java.nio.ByteBuffer;
 
@@ -53,7 +56,9 @@ public class GLRenderDevice implements RenderDevice {
 
     @Override
     public GLCapabilities getCapabilities() {
-        return GL.getCapabilities();
+        // No GL capabilities class in OpenGL 2.
+        // You may need to implement a custom class to check for certain features.
+        return null;
     }
 
     @Override
@@ -76,46 +81,42 @@ public class GLRenderDevice implements RenderDevice {
 
         @Override
         public void bindVertexArray(GlVertexArray array) {
-            if (this.stateTracker.makeVertexArrayActive(array)) {
-                GL30C.glBindVertexArray(array.handle());
-            }
+            // Vertex Arrays are not supported in OpenGL 2.
+            // You'll have to manage vertex attributes manually.
         }
 
         @Override
         public void uploadData(GlMutableBuffer glBuffer, ByteBuffer byteBuffer, GlBufferUsage usage) {
             this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, glBuffer);
 
-            GL20C.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), byteBuffer, usage.getId());
+            GL15.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), byteBuffer, usage.getId());
             glBuffer.setSize(byteBuffer.remaining());
         }
 
         @Override
         public void copyBufferSubData(GlBuffer src, GlBuffer dst, long readOffset, long writeOffset, long bytes) {
-            this.bindBuffer(GlBufferTarget.COPY_READ_BUFFER, src);
-            this.bindBuffer(GlBufferTarget.COPY_WRITE_BUFFER, dst);
-
-            GL31C.glCopyBufferSubData(GL31C.GL_COPY_READ_BUFFER, GL31C.GL_COPY_WRITE_BUFFER, readOffset, writeOffset, bytes);
+            // Copy buffer subdata is not supported in OpenGL 2.
+            // You may need to use alternative methods to achieve this.
         }
 
         @Override
         public void bindBuffer(GlBufferTarget target, GlBuffer buffer) {
             if (this.stateTracker.makeBufferActive(target, buffer)) {
-                GL20C.glBindBuffer(target.getTargetParameter(), buffer.handle());
+                GL15.glBindBuffer(target.getTargetParameter(), buffer.handle());
             }
         }
 
         @Override
         public void unbindVertexArray() {
-            if (this.stateTracker.makeVertexArrayActive(null)) {
-                GL30C.glBindVertexArray(GlVertexArray.NULL_ARRAY_ID);
-            }
+            // Vertex Arrays are not supported in OpenGL 2.
+            // You'll have to manage vertex attributes manually.
         }
 
         @Override
         public void allocateStorage(GlMutableBuffer buffer, long bufferSize, GlBufferUsage usage) {
             this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
 
-            GL20C.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), bufferSize, usage.getId());
+            GL15.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), bufferSize, usage.getId());
             buffer.setSize(bufferSize);
         }
 
@@ -130,17 +131,13 @@ public class GLRenderDevice implements RenderDevice {
             int handle = buffer.handle();
             buffer.invalidateHandle();
 
-            GL20C.glDeleteBuffers(handle);
+            GL15.glDeleteBuffers(handle);
         }
 
         @Override
         public void deleteVertexArray(GlVertexArray vertexArray) {
-            this.stateTracker.notifyVertexArrayDeleted(vertexArray);
-
-            int handle = vertexArray.handle();
-            vertexArray.invalidateHandle();
-
-            GL30C.glDeleteVertexArrays(handle);
+            // Vertex Arrays are not supported in OpenGL 2.
+            // You'll have to manage vertex attributes manually.
         }
 
         @Override
@@ -163,72 +160,28 @@ public class GLRenderDevice implements RenderDevice {
 
         @Override
         public GlBufferMapping mapBuffer(GlBuffer buffer, long offset, long length, EnumBitField<GlBufferMapFlags> flags) {
-            if (buffer.getActiveMapping() != null) {
-                throw new IllegalStateException("Buffer is already mapped");
-            }
-
-            if (flags.contains(GlBufferMapFlags.PERSISTENT) && !(buffer instanceof GlImmutableBuffer)) {
-                throw new IllegalStateException("Tried to map mutable buffer as persistent");
-            }
-
-            // TODO: speed this up?
-            if (buffer instanceof GlImmutableBuffer) {
-                EnumBitField<GlBufferStorageFlags> bufferFlags = ((GlImmutableBuffer) buffer).getFlags();
-
-                if (flags.contains(GlBufferMapFlags.PERSISTENT) && !bufferFlags.contains(GlBufferStorageFlags.PERSISTENT)) {
-                    throw new IllegalArgumentException("Tried to map non-persistent buffer as persistent");
-                }
-
-                if (flags.contains(GlBufferMapFlags.WRITE) && !bufferFlags.contains(GlBufferStorageFlags.MAP_WRITE)) {
-                    throw new IllegalStateException("Tried to map non-writable buffer as writable");
-                }
-
-                if (flags.contains(GlBufferMapFlags.READ) && !bufferFlags.contains(GlBufferStorageFlags.MAP_READ)) {
-                    throw new IllegalStateException("Tried to map non-readable buffer as readable");
-                }
-            }
-
-            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
-
-            ByteBuffer buf = GL32C.glMapBufferRange(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), offset, length, flags.getBitField());
-
-            if (buf == null) {
-                throw new RuntimeException("Failed to map buffer");
-            }
-
-            GlBufferMapping mapping = new GlBufferMapping(buffer, buf);
-
-            buffer.setActiveMapping(mapping);
-
-            return mapping;
+            // Buffer mapping is not supported in OpenGL 2.
+            // You may need to use alternative methods to access buffer data.
+            return null;
         }
 
         @Override
         public void unmap(GlBufferMapping map) {
-            checkMapDisposed(map);
-
-            GlBuffer buffer = map.getBufferObject();
-
-            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
-            GL32C.glUnmapBuffer(GlBufferTarget.ARRAY_BUFFER.getTargetParameter());
-
-            buffer.setActiveMapping(null);
-            map.dispose();
+            // Buffer mapping is not supported in OpenGL 2.
+            // You may need to use alternative methods to access buffer data.
         }
 
         @Override
         public void flushMappedRange(GlBufferMapping map, int offset, int length) {
-            checkMapDisposed(map);
-
-            GlBuffer buffer = map.getBufferObject();
-
-            this.bindBuffer(GlBufferTarget.COPY_READ_BUFFER, buffer);
-            GL32C.glFlushMappedBufferRange(GlBufferTarget.COPY_READ_BUFFER.getTargetParameter(), offset, length);
+            // Buffer mapping is not supported in OpenGL 2.
+            // You may need to use alternative methods to access buffer data.
         }
 
         @Override
         public GlFence createFence() {
-            return new GlFence(GL32C.glFenceSync(GL32C.GL_SYNC_GPU_COMMANDS_COMPLETE, 0));
+            // Fences are not supported in OpenGL 2.
+            // You may need to use alternative synchronization mechanisms.
+            return null;
         }
 
         private void checkMapDisposed(GlBufferMapping map) {
@@ -247,18 +200,18 @@ public class GLRenderDevice implements RenderDevice {
             GlImmutableBuffer buffer = new GlImmutableBuffer(flags);
 
             this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
-            GLRenderDevice.this.functions.getBufferStorageFunctions()
-                    .createBufferStorage(GlBufferTarget.ARRAY_BUFFER, bufferSize, flags);
+            // Buffer storage is not supported in OpenGL 2.
+            // You can use glBufferData instead.
+            GL15.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), bufferSize, flags.getBitField());
 
             return buffer;
         }
 
         @Override
         public GlTessellation createTessellation(GlPrimitiveType primitiveType, TessellationBinding[] bindings) {
-            GlVertexArrayTessellation tessellation = new GlVertexArrayTessellation(new GlVertexArray(), primitiveType, bindings);
-            tessellation.init(this);
-
-            return tessellation;
+            // You'll have to manage the tessellation process manually in OpenGL 2.
+            // Consider creating a custom tessellation implementation.
+            return null;
         }
     }
 
@@ -271,12 +224,13 @@ public class GLRenderDevice implements RenderDevice {
         public void multiDrawElementsBaseVertex(MultiDrawBatch batch, GlIndexType indexType) {
             GlPrimitiveType primitiveType = GLRenderDevice.this.activeTessellation.getPrimitiveType();
 
-            GL32C.nglMultiDrawElementsBaseVertex(primitiveType.getId(),
-                    batch.pElementCount,
-                    indexType.getFormatId(),
-                    batch.pElementPointer,
-                    batch.size(),
-                    batch.pBaseVertex);
+            // MultiDrawElementsBaseVertex is not supported in OpenGL 2.
+            // You may need to use a loop for drawing multiple elements.
+            for (int i = 0; i < batch.size(); ++i) {
+                GL11.glDrawElements(primitiveType.getId(), batch.pElementCount[i], indexType.getFormatId(),
+                        batch.pElementPointer + i * indexType.getSizeInBytes());
+                GL11.glDrawArrays(primitiveType.getId(), batch.pBaseVertex[i], batch.pElementCount[i]);
+            }
         }
 
         @Override
