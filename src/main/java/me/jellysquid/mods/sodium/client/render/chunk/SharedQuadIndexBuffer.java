@@ -19,37 +19,42 @@ public class SharedQuadIndexBuffer {
     private final GlMutableBuffer buffer;
     private final IndexType indexType;
 
-    // Using a fixed size buffer to avoid unnecessary allocations and memory management overhead.
-    private final int maxPrimitives;
+    private int maxPrimitives;
 
     public SharedQuadIndexBuffer(CommandList commandList, IndexType indexType) {
+        this.buffer = commandList.createMutableBuffer();
         this.indexType = indexType;
-        this.maxPrimitives = indexType.getMaxPrimitiveCount(); // Set the maximum primitive count based on the chosen index type
+    }
 
     public void ensureCapacity(CommandList commandList, int elementCount) {
         if (elementCount > this.indexType.getMaxElementCount()) {
             throw new IllegalArgumentException("Tried to reserve storage for more vertices in this buffer than it can hold");
         }
+
+        int primitiveCount = elementCount / ELEMENTS_PER_PRIMITIVE;
+
+        if (primitiveCount > this.maxPrimitives) {
+            this.grow(commandList, this.getNextSize(primitiveCount));
+        }
     }
 
-        // Create the buffer with the maximum capacity
-        this.buffer = commandList.createMutableBuffer();
-        allocateStorage(commandList);
-        createIndexBuffer(commandList);
+    private int getNextSize(int primitiveCount) {
+        return Math.min(Math.max(this.maxPrimitives * 2, primitiveCount + 16384), this.indexType.getMaxPrimitiveCount());
     }
 
-    private void allocateStorage(CommandList commandList) {
-        var bufferSize = this.maxPrimitives * this.indexType.getBytesPerElement() * ELEMENTS_PER_PRIMITIVE;
+    private void grow(CommandList commandList, int primitiveCount) {
+        var bufferSize = primitiveCount * this.indexType.getBytesPerElement() * ELEMENTS_PER_PRIMITIVE;
+
         commandList.allocateStorage(this.buffer, bufferSize, GlBufferUsage.STATIC_DRAW);
+
+        var mapped = commandList.mapBuffer(this.buffer, 0, bufferSize, EnumBitField.of(GlBufferMapFlags.INVALIDATE_BUFFER, GlBufferMapFlags.WRITE, GlBufferMapFlags.UNSYNCHRONIZED));
+        this.indexType.createIndexBuffer(mapped.getMemoryBuffer(), primitiveCount);
+
+        commandList.unmap(mapped);
+
+        this.maxPrimitives = primitiveCount;
     }
 
-    // Pre-generate the index buffer at initialization for better performance.
-    private void createIndexBuffer(CommandList commandList) {
-        var mapped = commandList.mapBuffer(this.buffer, 0, this.buffer.getSize(),
-                EnumBitField.of(GlBufferMapFlags.INVALIDATE_BUFFER, GlBufferMapFlags.WRITE, GlBufferMapFlags.UNSYNCHRONIZED));
-        this.indexType.createIndexBuffer(mapped.getMemoryBuffer(), this.maxPrimitives);
-        commandList.unmap(mapped);
-    }
 
     public GlBuffer getBufferObject() {
         return this.buffer;
@@ -67,23 +72,23 @@ public class SharedQuadIndexBuffer {
         return this.indexType;
     }
 
-    // No need for `ensureCapacity` anymore as the buffer has a fixed size.
-    // Use `maxPrimitives` to check if the desired primitive count is within the buffer's capacity.
-
     public enum IndexType {
         SHORT(GlIndexType.UNSIGNED_SHORT, 64 * 1024) {
             @Override
             public void createIndexBuffer(ByteBuffer byteBuffer, int primitiveCount) {
                 ShortBuffer shortBuffer = byteBuffer.asShortBuffer();
 
-                // Optimized for loop for index buffer generation
-                for (int i = 0; i < primitiveCount * ELEMENTS_PER_PRIMITIVE; i += ELEMENTS_PER_PRIMITIVE) {
-                    shortBuffer.put(i + 0, (short) (i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 0));
-                    shortBuffer.put(i + 1, (short) (i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 1));
-                    shortBuffer.put(i + 2, (short) (i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 2));
-                    shortBuffer.put(i + 3, (short) (i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 2));
-                    shortBuffer.put(i + 4, (short) (i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 3));
-                    shortBuffer.put(i + 5, (short) (i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 0));
+                for (int primitiveIndex = 0; primitiveIndex < primitiveCount; primitiveIndex++) {
+                    int indexOffset = primitiveIndex * ELEMENTS_PER_PRIMITIVE;
+                    int vertexOffset = primitiveIndex * VERTICES_PER_PRIMITIVE;
+
+                    shortBuffer.put(indexOffset + 0, (short) (vertexOffset + 0));
+                    shortBuffer.put(indexOffset + 1, (short) (vertexOffset + 1));
+                    shortBuffer.put(indexOffset + 2, (short) (vertexOffset + 2));
+
+                    shortBuffer.put(indexOffset + 3, (short) (vertexOffset + 2));
+                    shortBuffer.put(indexOffset + 4, (short) (vertexOffset + 3));
+                    shortBuffer.put(indexOffset + 5, (short) (vertexOffset + 0));
                 }
             }
         },
@@ -92,14 +97,17 @@ public class SharedQuadIndexBuffer {
             public void createIndexBuffer(ByteBuffer byteBuffer, int primitiveCount) {
                 IntBuffer intBuffer = byteBuffer.asIntBuffer();
 
-                // Optimized for loop for index buffer generation
-                for (int i = 0; i < primitiveCount * ELEMENTS_PER_PRIMITIVE; i += ELEMENTS_PER_PRIMITIVE) {
-                    intBuffer.put(i + 0, i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 0);
-                    intBuffer.put(i + 1, i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 1);
-                    intBuffer.put(i + 2, i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 2);
-                    intBuffer.put(i + 3, i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 2);
-                    intBuffer.put(i + 4, i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 3);
-                    intBuffer.put(i + 5, i / ELEMENTS_PER_PRIMITIVE * VERTICES_PER_PRIMITIVE + 0);
+                for (int primitiveIndex = 0; primitiveIndex < primitiveCount; primitiveIndex++) {
+                    int indexOffset = primitiveIndex * ELEMENTS_PER_PRIMITIVE;
+                    int vertexOffset = primitiveIndex * VERTICES_PER_PRIMITIVE;
+
+                    intBuffer.put(indexOffset + 0, vertexOffset + 0);
+                    intBuffer.put(indexOffset + 1, vertexOffset + 1);
+                    intBuffer.put(indexOffset + 2, vertexOffset + 2);
+
+                    intBuffer.put(indexOffset + 3, vertexOffset + 2);
+                    intBuffer.put(indexOffset + 4, vertexOffset + 3);
+                    intBuffer.put(indexOffset + 5, vertexOffset + 0);
                 }
             }
         };
