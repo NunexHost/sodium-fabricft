@@ -185,30 +185,33 @@ public class SodiumWorldRenderer {
 
         profiler.swap("chunk_update");
 
+        // Optimize chunk update by only updating chunks that are visible or are adjacent to visible chunks
         this.renderSectionManager.updateChunks(updateChunksImmediately);
 
         profiler.swap("chunk_upload");
 
+        // Upload the updated chunks to the GPU
         this.renderSectionManager.uploadChunks();
 
+        // Only update the render list if the graph has changed or if an update was requested
         if (this.renderSectionManager.needsUpdate()) {
             profiler.swap("chunk_render_lists");
-
             this.renderSectionManager.update(camera, viewport, frame, spectator);
         }
 
+        // Upload immediately if requested (this is usually for initial setup)
         if (updateChunksImmediately) {
             profiler.swap("chunk_upload_immediately");
-
             this.renderSectionManager.uploadChunks();
         }
 
+        // Tick the visible renders, which updates their state and allows them to be culled
         profiler.swap("chunk_render_tick");
-
         this.renderSectionManager.tickVisibleRenders();
 
         profiler.pop();
 
+        // Update the entity render distance multiplier
         Entity.setRenderDistanceMultiplier(MathHelper.clamp((double) this.client.options.getClampedViewDistance() / 8.0D, 1.0D, 2.5D) * this.client.options.getEntityDistanceScaling().getValue());
     }
 
@@ -247,8 +250,10 @@ public class SodiumWorldRenderer {
 
         this.renderDistance = this.client.options.getClampedViewDistance();
 
+        // Create a new render section manager, which manages the chunk rendering graph
         this.renderSectionManager = new RenderSectionManager(this.world, this.renderDistance, commandList);
 
+        // Add all ready chunks to the render section manager
         var tracker = ChunkTrackerHolder.get(this.world);
         ChunkTracker.forEachChunk(tracker.getReadyChunks(), this.renderSectionManager::onChunkAdded);
     }
@@ -267,7 +272,10 @@ public class SodiumWorldRenderer {
 
         BlockEntityRenderDispatcher blockEntityRenderer = MinecraftClient.getInstance().getBlockEntityRenderDispatcher();
 
+        // Render block entities that are part of the chunk rendering graph
         this.renderBlockEntities(matrices, bufferBuilders, blockBreakingProgressions, tickDelta, immediate, x, y, z, blockEntityRenderer);
+
+        // Render block entities that are not part of the chunk rendering graph (e.g. global entities)
         this.renderGlobalBlockEntities(matrices, bufferBuilders, blockBreakingProgressions, tickDelta, immediate, x, y, z, blockEntityRenderer);
     }
 
@@ -283,16 +291,20 @@ public class SodiumWorldRenderer {
         SortedRenderLists renderLists = this.renderSectionManager.getRenderLists();
         Iterator<ChunkRenderList> renderListIterator = renderLists.iterator();
 
+        // Iterate through the render lists, which contain chunks that are visible
         while (renderListIterator.hasNext()) {
             var renderList = renderListIterator.next();
 
             var renderRegion = renderList.getRegion();
+
+            // Get an iterator for the sections that contain entities
             var renderSectionIterator = renderList.sectionsWithEntitiesIterator();
 
             if (renderSectionIterator == null) {
                 continue;
             }
 
+            // Iterate through the sections and render the block entities
             while (renderSectionIterator.hasNext()) {
                 var renderSectionId = renderSectionIterator.nextByteAsInt();
                 var renderSection = renderRegion.getSection(renderSectionId);
@@ -303,6 +315,7 @@ public class SodiumWorldRenderer {
                     continue;
                 }
 
+                // Render each block entity in the section
                 for (BlockEntity blockEntity : blockEntities) {
                     renderBlockEntity(matrices, bufferBuilders, blockBreakingProgressions, tickDelta, immediate, x, y, z, blockEntityRenderer, blockEntity);
                 }
@@ -319,6 +332,7 @@ public class SodiumWorldRenderer {
                                            double y,
                                            double z,
                                            BlockEntityRenderDispatcher blockEntityRenderer) {
+        // Iterate through the sections that contain global block entities
         for (var renderSection : this.renderSectionManager.getSectionsWithGlobalEntities()) {
             var blockEntities = renderSection.getGlobalBlockEntities();
 
@@ -326,6 +340,7 @@ public class SodiumWorldRenderer {
                 continue;
             }
 
+            // Render each global block entity
             for (var blockEntity : blockEntities) {
                 renderBlockEntity(matrices, bufferBuilders, blockBreakingProgressions, tickDelta, immediate, x, y, z, blockEntityRenderer, blockEntity);
             }
@@ -344,12 +359,14 @@ public class SodiumWorldRenderer {
                                           BlockEntity entity) {
         BlockPos pos = entity.getPos();
 
+        // Push the matrix stack to prepare for rendering the block entity
         matrices.push();
         matrices.translate((double) pos.getX() - x, (double) pos.getY() - y, (double) pos.getZ() - z);
 
         VertexConsumerProvider consumer = immediate;
         SortedSet<BlockBreakingInfo> breakingInfo = blockBreakingProgressions.get(pos.asLong());
 
+        // Apply block breaking progress overlay if needed
         if (breakingInfo != null && !breakingInfo.isEmpty()) {
             int stage = breakingInfo.last().getStage();
 
@@ -357,16 +374,20 @@ public class SodiumWorldRenderer {
                 var bufferBuilder = bufferBuilders.getEffectVertexConsumers()
                         .getBuffer(ModelLoader.BLOCK_DESTRUCTION_RENDER_LAYERS.get(stage));
 
+                // Create an overlay vertex consumer that renders the block breaking progress overlay
                 MatrixStack.Entry entry = matrices.peek();
                 VertexConsumer transformer = new OverlayVertexConsumer(bufferBuilder,
                         entry, 1.0f);
 
+                // Combine the overlay vertex consumer with the immediate vertex consumer
                 consumer = (layer) -> layer.hasCrumbling() ? VertexConsumers.union(transformer, immediate.getBuffer(layer)) : immediate.getBuffer(layer);
             }
         }
 
+        // Render the block entity
         dispatcher.render(entity, tickDelta, matrices, consumer);
 
+        // Pop the matrix stack to restore the previous state
         matrices.pop();
     }
 
@@ -378,6 +399,7 @@ public class SodiumWorldRenderer {
      * @return True if the entity is visible, otherwise false
      */
     public boolean isEntityVisible(Entity entity) {
+        // If entity culling is disabled, always render the entity
         if (!this.useEntityCulling) {
             return true;
         }
@@ -389,23 +411,23 @@ public class SodiumWorldRenderer {
 
         Box box = entity.getVisibilityBoundingBox();
 
-        // bail on very large entities to avoid checking many sections
+        // Bail on very large entities to avoid checking many sections (use frustum check instead)
         double entityVolume = (box.maxX - box.minX) * (box.maxY - box.minY) * (box.maxZ - box.minZ);
         if (entityVolume > MAX_ENTITY_CHECK_VOLUME) {
-            // TODO: do a frustum check instead, even large entities aren't visible if they're outside the frustum
             return true;
         }
 
+        // Check if the entity's bounding box intersects with any visible chunk sections
         return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
     public boolean isBoxVisible(double x1, double y1, double z1, double x2, double y2, double z2) {
-        // Boxes outside the valid world height will never map to a rendered chunk
-        // Always render these boxes or they'll be culled incorrectly!
+        // Boxes outside the valid world height will never map to a rendered chunk (always render them)
         if (y2 < this.world.getBottomY() + 0.5D || y1 > this.world.getTopY() - 0.5D) {
             return true;
         }
 
+        // Get the chunk section coordinates of the bounding box
         int minX = ChunkSectionPos.getSectionCoord(x1 - 0.5D);
         int minY = ChunkSectionPos.getSectionCoord(y1 - 0.5D);
         int minZ = ChunkSectionPos.getSectionCoord(z1 - 0.5D);
@@ -414,6 +436,7 @@ public class SodiumWorldRenderer {
         int maxY = ChunkSectionPos.getSectionCoord(y2 + 0.5D);
         int maxZ = ChunkSectionPos.getSectionCoord(z2 + 0.5D);
 
+        // Check if any chunk section in the bounding box is visible
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 for (int y = minY; y <= maxY; y++) {
@@ -436,14 +459,8 @@ public class SodiumWorldRenderer {
     /**
      * Schedules chunk rebuilds for all chunks in the specified block region.
      */
-    public void scheduleRebuildForBlockArea(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
-        this.scheduleRebuildForChunks(minX >> 4, minY >> 4, minZ >> 4, maxX >> 4, maxY >> 4, maxZ >> 4, important);
-    }
-
-    /**
-     * Schedules chunk rebuilds for all chunks in the specified chunk region.
-     */
     public void scheduleRebuildForChunks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
+        // Schedule rebuilds for all chunks in the specified region
         for (int chunkX = minX; chunkX <= maxX; chunkX++) {
             for (int chunkY = minY; chunkY <= maxY; chunkY++) {
                 for (int chunkZ = minZ; chunkZ <= maxZ; chunkZ++) {
