@@ -7,6 +7,7 @@ import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Direction;
 import org.apache.commons.lang3.ArrayUtils;
+import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -82,7 +83,7 @@ public class EntityRenderer {
 
     // Pre-allocate variables for temporary data
     private final Matrix4f modelMatrix = new Matrix4f();
-    private final Matrix4f normalMatrix = new Matrix4f();
+    private final Matrix3f normalMatrix3f = new Matrix3f(); // For normal transformations
 
     public static void render(MatrixStack matrixStack, VertexBufferWriter writer, ModelPart part, int light, int overlay, int color) {
         ModelPartData accessor = ModelPartData.from(part);
@@ -103,7 +104,8 @@ public class EntityRenderer {
         part.rotate(matrixStack);
 
         if (!accessor.isHidden()) {
-            renderCuboids(matrixStack.peek(), writer, cuboids, light, overlay, color);
+            // Call non-static renderCuboids method
+            new EntityRenderer().renderCuboids(matrixStack.peek(), writer, cuboids, light, overlay, color);
         }
 
         renderChildren(matrixStack, writer, light, overlay, color, children);
@@ -119,7 +121,7 @@ public class EntityRenderer {
     }
 
     // Optimized rendering of cuboids
-    private void renderCuboids(MatrixStack.Entry matrices, VertexBufferWriter writer, ModelCuboid[] cuboids, int light, int overlay, int color) {
+    public void renderCuboids(MatrixStack.Entry matrices, VertexBufferWriter writer, ModelCuboid[] cuboids, int light, int overlay, int color) {
         // Pre-calculate normals for the entire model
         prepareNormals(matrices);
 
@@ -202,15 +204,15 @@ public class EntityRenderer {
     // Optimized calculation of normals
     private void prepareNormals(MatrixStack.Entry matrices) {
         // Get the normal matrix from the matrix stack
-        normalMatrix.set(matrices.getNormalMatrix());
+        normalMatrix3f.set(matrices.getNormalMatrix());
 
         // Calculate normals for all faces using the normal matrix
-        CUBE_NORMALS[FACE_NEG_Y] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.DOWN);
-        CUBE_NORMALS[FACE_POS_Y] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.UP);
-        CUBE_NORMALS[FACE_NEG_Z] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.NORTH);
-        CUBE_NORMALS[FACE_POS_Z] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.SOUTH);
-        CUBE_NORMALS[FACE_POS_X] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.WEST);
-        CUBE_NORMALS[FACE_NEG_X] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.EAST);
+        CUBE_NORMALS[FACE_NEG_Y] = MatrixHelper.transformNormal(normalMatrix3f, matrices.canSkipNormalization, Direction.DOWN);
+        CUBE_NORMALS[FACE_POS_Y] = MatrixHelper.transformNormal(normalMatrix3f, matrices.canSkipNormalization, Direction.UP);
+        CUBE_NORMALS[FACE_NEG_Z] = MatrixHelper.transformNormal(normalMatrix3f, matrices.canSkipNormalization, Direction.NORTH);
+        CUBE_NORMALS[FACE_POS_Z] = MatrixHelper.transformNormal(normalMatrix3f, matrices.canSkipNormalization, Direction.SOUTH);
+        CUBE_NORMALS[FACE_POS_X] = MatrixHelper.transformNormal(normalMatrix3f, matrices.canSkipNormalization, Direction.WEST);
+        CUBE_NORMALS[FACE_NEG_X] = MatrixHelper.transformNormal(normalMatrix3f, matrices.canSkipNormalization, Direction.EAST);
 
         // Pre-calculate mirrored normals for performance
         CUBE_NORMALS_MIRRORED[FACE_NEG_Y] = CUBE_NORMALS[FACE_NEG_Y];
@@ -236,4 +238,4 @@ public class EntityRenderer {
         uvs[2].set(u1, v2);
         uvs[3].set(u2, v2);
     }
-                                                                }
+            }
