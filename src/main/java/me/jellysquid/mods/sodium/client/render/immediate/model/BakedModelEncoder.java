@@ -17,7 +17,10 @@ public class BakedModelEncoder {
 
     // Pre-allocate memory for vertex data, reducing heap allocations
     private static final ThreadLocal<MemoryStack> STACK = ThreadLocal.withInitial(MemoryStack::stackPush);
-    private static final ThreadLocal<long> BUFFER = ThreadLocal.withInitial(() -> STACK.get().nmalloc(4 * VERTEX_STRIDE));
+    private static final ThreadLocal<Long> BUFFER = ThreadLocal.withInitial(() -> {
+        MemoryStack stack = STACK.get();
+        return stack.nmalloc(4 * VERTEX_STRIDE);
+    }); 
 
     public static void writeQuadVertices(VertexBufferWriter writer, MatrixStack.Entry matrices, ModelQuadView quad, int color, int light, int overlay) {
         Matrix3f matNormal = matrices.getNormalMatrix();
@@ -25,7 +28,7 @@ public class BakedModelEncoder {
 
         // Reuse the same memory stack and buffer for each call, minimizing allocations
         MemoryStack stack = STACK.get();
-        long buffer = BUFFER.get();
+        long buffer = BUFFER.get().longValue(); // Unbox the Long
         long ptr = buffer;
 
         // Pre-compute the transformed normal vector
@@ -86,7 +89,7 @@ public class BakedModelEncoder {
         Matrix4f matPosition = matrices.getPositionMatrix();
 
         MemoryStack stack = STACK.get();
-        long buffer = BUFFER.get();
+        long buffer = BUFFER.get().longValue(); // Unbox the Long
         long ptr = buffer;
 
         var normal = MatrixHelper.transformNormal(matNormal, matrices.canSkipNormalization, quad.getLightFace());
@@ -172,4 +175,4 @@ public class BakedModelEncoder {
 
         writer.push(stack, buffer, 4, ModelVertex.FORMAT);
     }
-}
+            }
