@@ -225,11 +225,28 @@ public class GLRenderDevice implements RenderDevice {
             GlPrimitiveType primitiveType = GLRenderDevice.this.activeTessellation.getPrimitiveType();
 
             // MultiDrawElementsBaseVertex is not supported in OpenGL 2.
-            // You may need to use a loop for drawing multiple elements.
+            // We need to iterate over the batch and draw each element individually.
             for (int i = 0; i < batch.size(); ++i) {
-                GL11.glDrawElements(primitiveType.getId(), batch.pElementCount[i], indexType.getFormatId(),
-                        batch.pElementPointer + i * indexType.getSizeInBytes());
-                GL11.glDrawArrays(primitiveType.getId(), batch.pBaseVertex[i], batch.pElementCount[i]);
+                // Calculate the offset in the index buffer based on the element count
+                int elementOffset = i * batch.getElementCount(i) * indexType.getSizeInBytes();
+                // Draw the elements for the current batch item
+                GL11.glDrawElements(
+                        primitiveType.getId(),
+                        batch.getElementCount(i),
+                        indexType.getFormatId(),
+                        batch.getElementPointer() + elementOffset
+                );
+
+                // Calculate the starting vertex position for this batch item
+                int startVertex = batch.getBaseVertex(i);
+
+                // Draw the arrays for this batch item
+                // We use the element count from the batch, since it should match
+                GL11.glDrawArrays(
+                        primitiveType.getId(),
+                        startVertex,
+                        batch.getElementCount(i)
+                );
             }
         }
 
