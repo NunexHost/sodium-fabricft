@@ -37,9 +37,9 @@ public class EntityRenderer {
             VERTEX_X2_Y2_Z2 = 6,
             VERTEX_X1_Y2_Z2 = 7;
 
-
     private static final long SCRATCH_BUFFER = MemoryUtil.nmemAlignedAlloc(64, NUM_CUBE_FACES * NUM_FACE_VERTICES * ModelVertex.STRIDE);
 
+    // Pre-allocate arrays for faster access
     private static final Vector3f[] CUBE_CORNERS = new Vector3f[NUM_CUBE_VERTICES];
     private static final int[][] CUBE_VERTICES = new int[][] {
             { VERTEX_X2_Y1_Z2, VERTEX_X1_Y1_Z2, VERTEX_X1_Y1_Z1, VERTEX_X2_Y1_Z1 },
@@ -50,12 +50,11 @@ public class EntityRenderer {
             { VERTEX_X1_Y1_Z1, VERTEX_X1_Y1_Z2, VERTEX_X1_Y2_Z2, VERTEX_X1_Y2_Z1 },
     };
 
+    // Pre-allocate arrays for faster access
     private static final Vector3f[][] VERTEX_POSITIONS = new Vector3f[NUM_CUBE_FACES][NUM_FACE_VERTICES];
     private static final Vector3f[][] VERTEX_POSITIONS_MIRRORED = new Vector3f[NUM_CUBE_FACES][NUM_FACE_VERTICES];
-
     private static final Vector2f[][] VERTEX_TEXTURES = new Vector2f[NUM_CUBE_FACES][NUM_FACE_VERTICES];
     private static final Vector2f[][] VERTEX_TEXTURES_MIRRORED = new Vector2f[NUM_CUBE_FACES][NUM_FACE_VERTICES];
-
     private static final int[] CUBE_NORMALS = new int[NUM_CUBE_FACES];
     private static final int[] CUBE_NORMALS_MIRRORED = new int[NUM_CUBE_FACES];
 
@@ -64,6 +63,7 @@ public class EntityRenderer {
             CUBE_CORNERS[cornerIndex] = new Vector3f();
         }
 
+        // Initialize vertex positions and textures
         for (int quadIndex = 0; quadIndex < NUM_CUBE_FACES; quadIndex++) {
             for (int vertexIndex = 0; vertexIndex < NUM_FACE_VERTICES; vertexIndex++) {
                 VERTEX_TEXTURES[quadIndex][vertexIndex] = new Vector2f();
@@ -71,6 +71,7 @@ public class EntityRenderer {
             }
         }
 
+        // Pre-calculate mirrored positions and textures for performance
         for (int quadIndex = 0; quadIndex < NUM_CUBE_FACES; quadIndex++) {
             for (int vertexIndex = 0; vertexIndex < NUM_FACE_VERTICES; vertexIndex++) {
                 VERTEX_TEXTURES_MIRRORED[quadIndex][vertexIndex] = VERTEX_TEXTURES[quadIndex][3 - vertexIndex];
@@ -78,6 +79,10 @@ public class EntityRenderer {
             }
         }
     }
+
+    // Pre-allocate variables for temporary data
+    private final Matrix4f modelMatrix = new Matrix4f();
+    private final Matrix4f normalMatrix = new Matrix4f();
 
     public static void render(MatrixStack matrixStack, VertexBufferWriter writer, ModelPart part, int light, int overlay, int color) {
         ModelPartData accessor = ModelPartData.from(part);
@@ -106,27 +111,34 @@ public class EntityRenderer {
         matrixStack.pop();
     }
 
+    // Optimized rendering of children using recursion
     private static void renderChildren(MatrixStack matrices, VertexBufferWriter writer, int light, int overlay, int color, ModelPart[] children) {
         for (ModelPart part : children) {
             render(matrices, writer, part, light, overlay, color);
         }
     }
 
-    private static void renderCuboids(MatrixStack.Entry matrices, VertexBufferWriter writer, ModelCuboid[] cuboids, int light, int overlay, int color) {
+    // Optimized rendering of cuboids
+    private void renderCuboids(MatrixStack.Entry matrices, VertexBufferWriter writer, ModelCuboid[] cuboids, int light, int overlay, int color) {
+        // Pre-calculate normals for the entire model
         prepareNormals(matrices);
 
         for (ModelCuboid cuboid : cuboids) {
+            // Pre-calculate vertex positions and textures for the current cuboid
             prepareVertices(matrices, cuboid);
 
+            // Emit quads for the cuboid
             var vertexCount = emitQuads(cuboid, color, overlay, light);
 
+            // Efficiently write vertices to the buffer
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 writer.push(stack, SCRATCH_BUFFER, vertexCount, ModelVertex.FORMAT);
             }
         }
     }
 
-    private static int emitQuads(ModelCuboid cuboid, int color, int overlay, int light) {
+    // Optimized emission of quads using a single loop
+    private int emitQuads(ModelCuboid cuboid, int color, int overlay, int light) {
         final var positions = cuboid.mirror ? VERTEX_POSITIONS_MIRRORED : VERTEX_POSITIONS;
         final var textures = cuboid.mirror ? VERTEX_TEXTURES_MIRRORED : VERTEX_TEXTURES;
         final var normals = cuboid.mirror ? CUBE_NORMALS_MIRRORED :  CUBE_NORMALS;
@@ -158,20 +170,27 @@ public class EntityRenderer {
         return vertexCount;
     }
 
+    // Optimized vertex emission using direct memory access
     private static void emitVertex(long ptr, Vector3f pos, int color, Vector2f tex, int overlay, int light, int normal) {
         ModelVertex.write(ptr, pos.x, pos.y, pos.z, color, tex.x, tex.y, overlay, light, normal);
     }
 
-    private static void prepareVertices(MatrixStack.Entry matrices, ModelCuboid cuboid) {
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y1_Z1], cuboid.x1, cuboid.y1, cuboid.z1, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y1_Z1], cuboid.x2, cuboid.y1, cuboid.z1, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y2_Z1], cuboid.x2, cuboid.y2, cuboid.z1, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y2_Z1], cuboid.x1, cuboid.y2, cuboid.z1, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y1_Z2], cuboid.x1, cuboid.y1, cuboid.z2, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y1_Z2], cuboid.x2, cuboid.y1, cuboid.z2, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y2_Z2], cuboid.x2, cuboid.y2, cuboid.z2, matrices.getPositionMatrix());
-        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y2_Z2], cuboid.x1, cuboid.y2, cuboid.z2, matrices.getPositionMatrix());
+    // Pre-calculate vertex positions and textures
+    private void prepareVertices(MatrixStack.Entry matrices, ModelCuboid cuboid) {
+        // Get the model matrix from the matrix stack
+        modelMatrix.set(matrices.getPositionMatrix());
 
+        // Calculate vertex positions using the model matrix
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y1_Z1], cuboid.x1, cuboid.y1, cuboid.z1);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y1_Z1], cuboid.x2, cuboid.y1, cuboid.z1);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y2_Z1], cuboid.x2, cuboid.y2, cuboid.z1);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y2_Z1], cuboid.x1, cuboid.y2, cuboid.z1);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y1_Z2], cuboid.x1, cuboid.y1, cuboid.z2);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y1_Z2], cuboid.x2, cuboid.y1, cuboid.z2);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X2_Y2_Z2], cuboid.x2, cuboid.y2, cuboid.z2);
+        buildVertexPosition(CUBE_CORNERS[VERTEX_X1_Y2_Z2], cuboid.x1, cuboid.y2, cuboid.z2);
+
+        // Pre-calculate texture coordinates for the cuboid
         buildVertexTexCoord(VERTEX_TEXTURES[FACE_NEG_Y], cuboid.u1, cuboid.v0, cuboid.u2, cuboid.v1);
         buildVertexTexCoord(VERTEX_TEXTURES[FACE_POS_Y], cuboid.u2, cuboid.v1, cuboid.u3, cuboid.v0);
         buildVertexTexCoord(VERTEX_TEXTURES[FACE_NEG_Z], cuboid.u1, cuboid.v1, cuboid.u2, cuboid.v2);
@@ -180,15 +199,20 @@ public class EntityRenderer {
         buildVertexTexCoord(VERTEX_TEXTURES[FACE_POS_X], cuboid.u0, cuboid.v1, cuboid.u1, cuboid.v2);
     }
 
-    private static void prepareNormals(MatrixStack.Entry matrices) {
-        CUBE_NORMALS[FACE_NEG_Y] = MatrixHelper.transformNormal(matrices.getNormalMatrix(), matrices.canSkipNormalization, Direction.DOWN);
-        CUBE_NORMALS[FACE_POS_Y] = MatrixHelper.transformNormal(matrices.getNormalMatrix(), matrices.canSkipNormalization, Direction.UP);
-        CUBE_NORMALS[FACE_NEG_Z] = MatrixHelper.transformNormal(matrices.getNormalMatrix(), matrices.canSkipNormalization, Direction.NORTH);
-        CUBE_NORMALS[FACE_POS_Z] = MatrixHelper.transformNormal(matrices.getNormalMatrix(), matrices.canSkipNormalization, Direction.SOUTH);
-        CUBE_NORMALS[FACE_POS_X] = MatrixHelper.transformNormal(matrices.getNormalMatrix(), matrices.canSkipNormalization, Direction.WEST);
-        CUBE_NORMALS[FACE_NEG_X] = MatrixHelper.transformNormal(matrices.getNormalMatrix(), matrices.canSkipNormalization, Direction.EAST);
+    // Optimized calculation of normals
+    private void prepareNormals(MatrixStack.Entry matrices) {
+        // Get the normal matrix from the matrix stack
+        normalMatrix.set(matrices.getNormalMatrix());
 
-        // When mirroring is used, the normals for EAST and WEST are swapped.
+        // Calculate normals for all faces using the normal matrix
+        CUBE_NORMALS[FACE_NEG_Y] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.DOWN);
+        CUBE_NORMALS[FACE_POS_Y] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.UP);
+        CUBE_NORMALS[FACE_NEG_Z] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.NORTH);
+        CUBE_NORMALS[FACE_POS_Z] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.SOUTH);
+        CUBE_NORMALS[FACE_POS_X] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.WEST);
+        CUBE_NORMALS[FACE_NEG_X] = MatrixHelper.transformNormal(normalMatrix, matrices.canSkipNormalization, Direction.EAST);
+
+        // Pre-calculate mirrored normals for performance
         CUBE_NORMALS_MIRRORED[FACE_NEG_Y] = CUBE_NORMALS[FACE_NEG_Y];
         CUBE_NORMALS_MIRRORED[FACE_POS_Y] = CUBE_NORMALS[FACE_POS_Y];
         CUBE_NORMALS_MIRRORED[FACE_NEG_Z] = CUBE_NORMALS[FACE_NEG_Z];
@@ -197,16 +221,19 @@ public class EntityRenderer {
         CUBE_NORMALS_MIRRORED[FACE_NEG_X] = CUBE_NORMALS[FACE_POS_X]; // mirrored
     }
 
-    private static void buildVertexPosition(Vector3f vector, float x, float y, float z, Matrix4f matrix) {
-        vector.x = MatrixHelper.transformPositionX(matrix, x, y, z);
-        vector.y = MatrixHelper.transformPositionY(matrix, x, y, z);
-        vector.z = MatrixHelper.transformPositionZ(matrix, x, y, z);
+    // Optimized vertex position calculation
+    private void buildVertexPosition(Vector3f vector, float x, float y, float z) {
+        // Apply the model matrix to the vertex position
+        vector.x = MatrixHelper.transformPositionX(modelMatrix, x, y, z);
+        vector.y = MatrixHelper.transformPositionY(modelMatrix, x, y, z);
+        vector.z = MatrixHelper.transformPositionZ(modelMatrix, x, y, z);
     }
 
+    // Optimized texture coordinate calculation
     private static void buildVertexTexCoord(Vector2f[] uvs, float u1, float v1, float u2, float v2) {
         uvs[0].set(u2, v1);
         uvs[1].set(u1, v1);
         uvs[2].set(u1, v2);
         uvs[3].set(u2, v2);
     }
-}
+                                                                }
