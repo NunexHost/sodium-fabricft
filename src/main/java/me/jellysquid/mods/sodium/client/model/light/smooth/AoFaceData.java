@@ -16,31 +16,6 @@ class AoFaceData {
 
     private int flags;
 
-    // Pre-compute the neighbor directions for each face for faster lookup
-    private static final Direction[][] NEIGHBOR_FACES = new Direction[6][4];
-
-    static {
-        // Neighbor faces for each direction
-        NEIGHBOR_FACES[Direction.DOWN.getId()] = new Direction[] {
-                Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST
-        };
-        NEIGHBOR_FACES[Direction.UP.getId()] = new Direction[] {
-                Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST
-        };
-        NEIGHBOR_FACES[Direction.NORTH.getId()] = new Direction[] {
-                Direction.UP, Direction.EAST, Direction.DOWN, Direction.WEST
-        };
-        NEIGHBOR_FACES[Direction.SOUTH.getId()] = new Direction[] {
-                Direction.UP, Direction.WEST, Direction.DOWN, Direction.EAST
-        };
-        NEIGHBOR_FACES[Direction.EAST.getId()] = new Direction[] {
-                Direction.UP, Direction.SOUTH, Direction.DOWN, Direction.NORTH
-        };
-        NEIGHBOR_FACES[Direction.WEST.getId()] = new Direction[] {
-                Direction.UP, Direction.NORTH, Direction.DOWN, Direction.SOUTH
-        };
-    }
-
     public void initLightData(LightDataAccess cache, BlockPos pos, Direction direction, boolean offset) {
         final int x = pos.getX();
         final int y = pos.getY();
@@ -76,8 +51,7 @@ class AoFaceData {
 
         final float caao = unpackAO(adjWord);
 
-        // Pre-computed neighbor faces for this direction
-        Direction[] faces = NEIGHBOR_FACES[direction.getId()];
+        Direction[] faces = AoNeighborInfo.get(direction).faces;
 
         final int e0 = cache.get(adjX, adjY, adjZ, faces[0]);
         final int e0lm = getLightmap(e0);
@@ -212,12 +186,15 @@ class AoFaceData {
         return weightedSum(this.ao, w);
     }
 
-    // Optimization: Use a single method for weighted sum instead of separate methods
     private static float weightedSum(float[] v, float[] w) {
-        return v[0] * w[0] + v[1] * w[1] + v[2] * w[2] + v[3] * w[3];
+        float t0 = v[0] * w[0];
+        float t1 = v[1] * w[1];
+        float t2 = v[2] * w[2];
+        float t3 = v[3] * w[3];
+
+        return t0 + t1 + t2 + t3;
     }
 
-    // Inline these methods for better performance
     private static float unpackSkyLight(int i) {
         return (i >> 16) & 0xFF;
     }
@@ -231,21 +208,13 @@ class AoFaceData {
         // strange issues
         if ((a == 0) || (b == 0) || (c == 0) || (d == 0)) {
             // Find the minimum value between all corners
-            final int min = Math.min(Math.min(a, b), Math.min(c, d));
+            final int min = minNonZero(minNonZero(a, b), minNonZero(c, d));
 
             // Normalize the corner values
-            if (a != 0) {
-                a = Math.max(a, min);
-            }
-            if (b != 0) {
-                b = Math.max(b, min);
-            }
-            if (c != 0) {
-                c = Math.max(c, min);
-            }
-            if (d != 0) {
-                d = Math.max(d, min);
-            }
+            a = Math.max(a, min);
+            b = Math.max(b, min);
+            c = Math.max(c, min);
+            d = Math.max(d, min);
         }
 
         // FIX: Apply the fullbright lightmap from emissive blocks at the very end so it cannot influence
@@ -263,8 +232,17 @@ class AoFaceData {
             d = LightmapTextureManager.MAX_LIGHT_COORDINATE;
         }
 
-        // Inline this calculation
-        return (((a + b + c + d) >> 2) & 0xFF00FF);
+        return ((a + b + c + d) >> 2) & 0xFF00FF;
+    }
+
+    private static int minNonZero(int a, int b) {
+        if (a == 0) {
+            return b;
+        } else if (b == 0) {
+            return a;
+        }
+
+        return Math.min(a, b);
     }
 
     public boolean hasLightData() {
@@ -278,4 +256,4 @@ class AoFaceData {
     public void reset() {
         this.flags = 0;
     }
- }
+}
