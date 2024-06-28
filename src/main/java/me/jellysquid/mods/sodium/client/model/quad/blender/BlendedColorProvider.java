@@ -11,62 +11,91 @@ import net.minecraft.util.math.MathHelper;
 public abstract class BlendedColorProvider<T> implements ColorProvider<T> {
     @Override
     public void getColors(WorldSlice view, BlockPos pos, T state, ModelQuadView quad, int[] output) {
+        // Pre-calculate block position offsets for optimization
+        final int blockX = pos.getX();
+        final int blockY = pos.getY();
+        final int blockZ = pos.getZ();
+
+        // Reuse interpolation values for all vertices
+        float interpX, interpY, interpZ;
+
         for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-            output[vertexIndex] = this.getVertexColor(view, pos, quad, vertexIndex);
+            // Offset the position by -0.5f to align smooth blending with flat blending.
+            interpX = quad.getX(vertexIndex) - 0.5f;
+            interpY = quad.getY(vertexIndex) - 0.5f;
+            interpZ = quad.getZ(vertexIndex) - 0.5f;
+
+            output[vertexIndex] = this.getVertexColor(view, blockX, blockY, blockZ, interpX, interpY, interpZ);
         }
     }
 
-    private int getVertexColor(WorldSlice world, BlockPos blockPos, ModelQuadView quad, int vertexIndex) {
-        // Offset the position by -0.5f to align smooth blending with flat blending.
-        final float posX = quad.getX(vertexIndex) - 0.5f;
-        final float posY = quad.getY(vertexIndex) - 0.5f;
-        final float posZ = quad.getZ(vertexIndex) - 0.5f;
-
+    private int getVertexColor(WorldSlice world, int blockX, int blockY, int blockZ, float interpX, float interpY, float interpZ) {
         // Floor the positions here to always get the largest integer below the input
         // as negative values by default round toward zero when casting to an integer.
         // Which would cause negative ratios to be calculated in the interpolation later on.
-        final int intX = MathHelper.floor(posX);
-        final int intY = MathHelper.floor(posY);
-        final int intZ = MathHelper.floor(posZ);
+        final int intX = MathHelper.floor(interpX);
+        final int intY = MathHelper.floor(interpY);
+        final int intZ = MathHelper.floor(interpZ);
 
         // Integer component of position vector
-        final int worldIntX = blockPos.getX() + intX;
-        final int worldIntY = blockPos.getY() + intY;
-        final int worldIntZ = blockPos.getZ() + intZ;
+        final int worldIntX = blockX + intX;
+        final int worldIntY = blockY + intY;
+        final int worldIntZ = blockZ + intZ;
 
         // Retrieve the color values for each neighboring block
-        final int c00 = this.getColor(world, worldIntX + 0, worldIntY, worldIntZ + 0);
-        final int c01 = this.getColor(world, worldIntX + 0, worldIntY, worldIntZ + 1);
-        final int c10 = this.getColor(world, worldIntX + 1, worldIntY, worldIntZ + 0);
-        final int c11 = this.getColor(world, worldIntX + 1, worldIntY, worldIntZ + 1);
+        // Use an array for efficient access
+        final int[] colors = new int[8];
+        colors[0] = this.getColor(world, worldIntX + 0, worldIntY + 0, worldIntZ + 0);
+        colors[1] = this.getColor(world, worldIntX + 0, worldIntY + 0, worldIntZ + 1);
+        colors[2] = this.getColor(world, worldIntX + 0, worldIntY + 1, worldIntZ + 0);
+        colors[3] = this.getColor(world, worldIntX + 0, worldIntY + 1, worldIntZ + 1);
+        colors[4] = this.getColor(world, worldIntX + 1, worldIntY + 0, worldIntZ + 0);
+        colors[5] = this.getColor(world, worldIntX + 1, worldIntY + 0, worldIntZ + 1);
+        colors[6] = this.getColor(world, worldIntX + 1, worldIntY + 1, worldIntZ + 0);
+        colors[7] = this.getColor(world, worldIntX + 1, worldIntY + 1, worldIntZ + 1);
 
         // Linear interpolation across the Z-axis
-        int z0;
-
-        if (c00 != c01) {
-            z0 = ColorMixer.mix(c00, c01, posZ - intZ);
+        int z0, z1;
+        if (colors[0] != colors[1]) {
+            z0 = ColorMixer.mix(colors[0], colors[1], interpZ - intZ);
         } else {
-            z0 = c00;
+            z0 = colors[0];
         }
-
-        int z1;
-
-        if (c10 != c11) {
-            z1 = ColorMixer.mix(c10, c11, posZ - intZ);
+        if (colors[4] != colors[5]) {
+            z1 = ColorMixer.mix(colors[4], colors[5], interpZ - intZ);
         } else {
-            z1 = c10;
+            z1 = colors[4];
         }
 
         // Linear interpolation across the X-axis
         int x0;
-
         if (z0 != z1) {
-            x0 = ColorMixer.mix(z0, z1, posX - intX);
+            x0 = ColorMixer.mix(z0, z1, interpX - intX);
         } else {
             x0 = z0;
         }
 
-        return ColorARGB.toABGR(x0);
+        // Linear interpolation across the Y-axis (assuming Y is the vertical axis)
+        int x1;
+        if (colors[2] != colors[3]) {
+            x1 = ColorMixer.mix(colors[2], colors[3], interpZ - intZ);
+        } else {
+            x1 = colors[2];
+        }
+        if (colors[6] != colors[7]) {
+            x1 = ColorMixer.mix(colors[6], colors[7], interpZ - intZ);
+        } else {
+            x1 = colors[6];
+        }
+        
+        int finalColor;
+        if (x0 != x1) {
+            finalColor = ColorMixer.mix(x0, x1, interpY - intY);
+        } else {
+            finalColor = x0;
+        }
+
+        return ColorARGB.toABGR(finalColor);
     }
 
     protected abstract int getColor(WorldSlice world, int x, int y, int z);
