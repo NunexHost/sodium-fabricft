@@ -43,7 +43,6 @@
     "features.options.render_layers.RenderLayersMixin",
     "features.options.weather.WorldRendererMixin",
     "features.render.entity.CuboidMixin",
-    "features.render.entity.ModelPartMixin",
     "features.render.entity.cull.EntityRendererMixin",
     "features.render.entity.shadows.EntityRenderDispatcherMixin",
     "features.render.gui.font.GlyphRendererMixin",
@@ -82,7 +81,6 @@
     "features.textures.mipmaps.SpriteContentsMixin",
     "features.world.biome.BiomeMixin",
     "features.world.storage.ClientChunkMapMixin",
-    "workarounds.context_creation.WindowMixin",
-    "workarounds.event_loop.RenderSystemMixin"
+    "workarounds.context_creation.WindowMixin"
   ]
 }
