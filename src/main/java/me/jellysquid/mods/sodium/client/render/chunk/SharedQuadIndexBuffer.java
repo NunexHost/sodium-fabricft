@@ -26,10 +26,11 @@ public class SharedQuadIndexBuffer {
         this.indexType = indexType;
         this.maxPrimitives = indexType.getMaxPrimitiveCount(); // Set the maximum primitive count based on the chosen index type
 
-    public ensureCapacity(CommandList commandList, int elementCount) {
+    public void ensureCapacity(CommandList commandList, int elementCount) {
         if (elementCount > this.indexType.getMaxElementCount()) {
             throw new IllegalArgumentException("Tried to reserve storage for more vertices in this buffer than it can hold");
         }
+    }
 
         // Create the buffer with the maximum capacity
         this.buffer = commandList.createMutableBuffer();
