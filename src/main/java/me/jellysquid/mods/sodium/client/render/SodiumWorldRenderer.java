@@ -459,6 +459,10 @@ public class SodiumWorldRenderer {
     /**
      * Schedules chunk rebuilds for all chunks in the specified block region.
      */
+    public void scheduleRebuildForBlockArea(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
+        this.scheduleRebuildForChunks(minX >> 4, minY >> 4, minZ >> 4, maxX >> 4, maxY >> 4, maxZ >> 4, important);
+    }
+    
     public void scheduleRebuildForChunks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
         // Schedule rebuilds for all chunks in the specified region
         for (int chunkX = minX; chunkX <= maxX; chunkX++) {
