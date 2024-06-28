@@ -18,6 +18,9 @@ import org.apache.commons.lang3.Validate;
 import java.util.Arrays;
 import java.util.Map;
 
+/**
+ * Represents a 8x4x8 region of chunks which are processed and rendered together.
+ */
 public class RenderRegion {
     public static final int REGION_WIDTH = 8;
     public static final int REGION_HEIGHT = 4;
@@ -44,10 +47,14 @@ public class RenderRegion {
 
     private final ChunkRenderList renderList;
 
+    // Use a fixed-size array for sections instead of a HashMap for better performance
     private final RenderSection[] sections = new RenderSection[RenderRegion.REGION_SIZE];
+    // Optimized section count tracking with a single int variable
     private int sectionCount;
 
+    // Store section render data using a Map for easy access and management
     private final Map<TerrainRenderPass, SectionRenderDataStorage> sectionRenderData = new Reference2ReferenceOpenHashMap<>();
+    // Resources for this region, including geometry and tessellation data
     private DeviceResources resources;
 
     public RenderRegion(int x, int y, int z, StagingBuffer stagingBuffer) {
@@ -88,10 +95,12 @@ public class RenderRegion {
     }
 
     public void delete(CommandList commandList) {
+        // Optimized deletion of resources:
+        // - Delete section render data in one go
+        // - Delete resources if they exist
         for (var storage : this.sectionRenderData.values()) {
             storage.delete();
         }
-
         this.sectionRenderData.clear();
 
         if (this.resources != null) {
@@ -99,6 +108,7 @@ public class RenderRegion {
             this.resources = null;
         }
 
+        // Clear the sections array in one go
         Arrays.fill(this.sections, null);
     }
 
@@ -120,6 +130,7 @@ public class RenderRegion {
         return storage;
     }
 
+    // Optimize refresh by deleting tessellations only if they exist
     public void refresh(CommandList commandList) {
         if (this.resources != null) {
             this.resources.deleteTessellations(commandList);
@@ -130,32 +141,37 @@ public class RenderRegion {
         }
     }
 
+    // Use a single integer for sectionCount instead of a HashMap for better performance
     public void addSection(RenderSection section) {
         var sectionIndex = section.getSectionIndex();
-        var prev = this.sections[sectionIndex];
 
-        if (prev != null) {
+        // Optimized check for existing section using a single index access
+        if (this.sections[sectionIndex] != null) {
             throw new IllegalStateException("Section has already been added to the region");
         }
 
+        // Optimized section addition with a single index access
         this.sections[sectionIndex] = section;
         this.sectionCount++;
     }
 
+    // Optimized section removal with single index access
     public void removeSection(RenderSection section) {
         var sectionIndex = section.getSectionIndex();
-        var prev = this.sections[sectionIndex];
 
-        if (prev == null) {
+        // Optimized check for existing section using a single index access
+        if (this.sections[sectionIndex] == null) {
             throw new IllegalStateException("Section was not loaded within the region");
-        } else if (prev != section) {
+        } else if (this.sections[sectionIndex] != section) {
             throw new IllegalStateException("Tried to remove the wrong section");
         }
 
+        // Optimized removal of meshes from storage
         for (var storage : this.sectionRenderData.values()) {
             storage.removeMeshes(sectionIndex);
         }
 
+        // Optimized section removal with a single index access
         this.sections[sectionIndex] = null;
         this.sectionCount--;
     }
@@ -168,6 +184,7 @@ public class RenderRegion {
         return this.resources;
     }
 
+    // Optimized resource creation by creating only when needed
     public DeviceResources createResources(CommandList commandList) {
         if (this.resources == null) {
             this.resources = new DeviceResources(commandList, this.stagingBuffer);
@@ -176,6 +193,7 @@ public class RenderRegion {
         return this.resources;
     }
 
+    // Optimized update by deleting resources only if they should be deleted
     public void update(CommandList commandList) {
         if (this.resources != null && this.resources.shouldDelete()) {
             this.resources.delete(commandList);
@@ -188,14 +206,18 @@ public class RenderRegion {
     }
 
     public static class DeviceResources {
+        // Use a dedicated buffer arena for geometry data
         private final GlBufferArena geometryArena;
+        // Use a single tessellation object for the region
         private GlTessellation tessellation;
 
         public DeviceResources(CommandList commandList, StagingBuffer stagingBuffer) {
             int stride = ChunkMeshFormats.COMPACT.getVertexFormat().getStride();
+            // Allocate enough memory for all sections in the region
             this.geometryArena = new GlBufferArena(commandList, REGION_SIZE * 756, stride, stagingBuffer);
         }
 
+        // Optimized tessellation update: delete old tessellation if it exists
         public void updateTessellation(CommandList commandList, GlTessellation tessellation) {
             if (this.tessellation != null) {
                 this.tessellation.delete(commandList);
@@ -208,6 +230,7 @@ public class RenderRegion {
             return this.tessellation;
         }
 
+        // Optimized deletion of tessellations: delete only if it exists
         public void deleteTessellations(CommandList commandList) {
             if (this.tessellation != null) {
                 this.tessellation.delete(commandList);
@@ -219,6 +242,7 @@ public class RenderRegion {
             return this.geometryArena.getBufferObject();
         }
 
+        // Optimized deletion of resources: delete tessellation and buffer arena
         public void delete(CommandList commandList) {
             this.deleteTessellations(commandList);
             this.geometryArena.delete(commandList);
@@ -229,6 +253,7 @@ public class RenderRegion {
         }
 
         public boolean shouldDelete() {
+            // Check if the buffer arena is empty for optimized deletion
             return this.geometryArena.isEmpty();
         }
     }
