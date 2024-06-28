@@ -28,32 +28,24 @@ public class RenderSection {
     // Occlusion Culling State
     private long visibilityData = VisibilityEncoding.NULL;
 
-    private int incomingDirections;
+    // These are packed into a single int for better cache locality
+    private int flagsAndIncomingDirections;
+
     private int lastVisibleFrame = -1;
 
+    // Adjacent sections
     private int adjacentMask;
-    public RenderSection
-            adjacentDown,
-            adjacentUp,
-            adjacentNorth,
-            adjacentSouth,
-            adjacentWest,
-            adjacentEast;
+    private RenderSection adjacentDown, adjacentUp, adjacentNorth, adjacentSouth, adjacentWest, adjacentEast;
 
 
     // Rendering State
-    private boolean built = false; // merge with the flags?
-    private int flags = RenderSectionFlags.NONE;
-    private BlockEntity @Nullable[] globalBlockEntities;
-    private BlockEntity @Nullable[] culledBlockEntities;
-    private Sprite @Nullable[] animatedSprites;
-
+    private BuiltSectionInfo builtInfo; // store the info directly instead of individual flags
+    private BlockEntity[] globalBlockEntities; // use arrays for potential future optimizations
+    private BlockEntity[] culledBlockEntities;
+    private Sprite[] animatedSprites;
 
     // Pending Update State
-    @Nullable
-    private CancellationToken buildCancellationToken = null;
-
-    @Nullable
+    private CancellationToken buildCancellationToken;
     private ChunkUpdateType pendingUpdateType;
 
     private int lastBuiltFrame = -1;
@@ -134,8 +126,7 @@ public class RenderSection {
     }
 
     private void setRenderState(@NotNull BuiltSectionInfo info) {
-        this.built = true;
-        this.flags = info.flags;
+        this.builtInfo = info;
         this.visibilityData = info.visibilityData;
         this.globalBlockEntities = info.globalBlockEntities;
         this.culledBlockEntities = info.culledBlockEntities;
@@ -143,8 +134,7 @@ public class RenderSection {
     }
 
     private void clearRenderState() {
-        this.built = false;
-        this.flags = RenderSectionFlags.NONE;
+        this.builtInfo = null;
         this.visibilityData = VisibilityEncoding.NULL;
         this.globalBlockEntities = null;
         this.culledBlockEntities = null;
@@ -244,7 +234,7 @@ public class RenderSection {
     }
 
     public boolean isBuilt() {
-        return this.built;
+        return this.builtInfo != null;
     }
 
     public int getSectionIndex() {
@@ -263,23 +253,11 @@ public class RenderSection {
         return this.lastVisibleFrame;
     }
 
-    public int getIncomingDirections() {
-        return this.incomingDirections;
-    }
-
-    public void addIncomingDirections(int directions) {
-        this.incomingDirections |= directions;
-    }
-
-    public void setIncomingDirections(int directions) {
-        this.incomingDirections = directions;
-    }
-
     /**
      * Returns a bitfield containing the {@link RenderSectionFlags} for this built section.
      */
     public int getFlags() {
-        return this.flags;
+        return this.flagsAndIncomingDirections & RenderSectionFlags.ALL;
     }
 
     /**
@@ -292,14 +270,14 @@ public class RenderSection {
     /**
      * Returns the collection of animated sprites contained by this rendered chunk section.
      */
-    public Sprite @Nullable[] getAnimatedSprites() {
+    public Sprite[] getAnimatedSprites() {
         return this.animatedSprites;
     }
 
     /**
      * Returns the collection of block entities contained by this rendered chunk.
      */
-    public BlockEntity @Nullable[] getCulledBlockEntities() {
+    public BlockEntity[] getCulledBlockEntities() {
         return this.culledBlockEntities;
     }
 
@@ -307,8 +285,20 @@ public class RenderSection {
      * Returns the collection of block entities contained by this rendered chunk, which are not part of its culling
      * volume. These entities should always be rendered regardless of the render being visible in the frustum.
      */
-    public BlockEntity @Nullable[] getGlobalBlockEntities() {
+    public BlockEntity[] getGlobalBlockEntities() {
         return this.globalBlockEntities;
+    }
+
+    public int getIncomingDirections() {
+        return this.flagsAndIncomingDirections & RenderSectionFlags.ALL;
+    }
+
+    public void addIncomingDirections(int directions) {
+        this.flagsAndIncomingDirections |= directions;
+    }
+
+    public void setIncomingDirections(int directions) {
+        this.flagsAndIncomingDirections = (this.flagsAndIncomingDirections & ~RenderSectionFlags.ALL) | directions;
     }
 
     public @Nullable CancellationToken getBuildCancellationToken() {
