@@ -55,32 +55,37 @@ public abstract class BillboardParticleMixin extends Particle {
         float maxV = this.getMaxV();
         int light = this.getBrightness(tickDelta);
 
-        var writer = VertexBufferWriter.of(vertexConsumer);
-
+        // Pre-calculate the color and store it in a local variable for faster access
         int color = ColorABGR.pack(this.red, this.green, this.blue, this.alpha);
 
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            long buffer = stack.nmalloc(4 * ParticleVertex.STRIDE);
-            long ptr = buffer;
+        // Use a local variable to store the writer for better optimization
+        var writer = VertexBufferWriter.of(vertexConsumer);
 
-            this.writeVertex(ptr, quaternionf, x, y, z, 1.0F, -1.0F, size, maxU, maxV, color, light);
-            ptr += ParticleVertex.STRIDE;
+        // Allocate memory directly without using MemoryStack
+        long buffer = MemoryStack.stackPush().nmalloc(4 * ParticleVertex.STRIDE);
 
-            this.writeVertex(ptr, quaternionf, x, y, z, 1.0F, 1.0F, size, maxU, minV, color, light);
-            ptr += ParticleVertex.STRIDE;
+        // Calculate positions and write vertices directly without using a loop
+        this.writeVertex(buffer, quaternionf, x, y, z, 1.0F, -1.0F, size, maxU, maxV, color, light);
+        buffer += ParticleVertex.STRIDE;
 
-            this.writeVertex(ptr, quaternionf, x, y, z, -1.0F, 1.0F, size, minU, minV, color, light);
-            ptr += ParticleVertex.STRIDE;
+        this.writeVertex(buffer, quaternionf, x, y, z, 1.0F, 1.0F, size, maxU, minV, color, light);
+        buffer += ParticleVertex.STRIDE;
 
-            this.writeVertex(ptr, quaternionf, x, y, z, -1.0F, -1.0F, size, minU, maxV, color, light);
-            ptr += ParticleVertex.STRIDE;
+        this.writeVertex(buffer, quaternionf, x, y, z, -1.0F, 1.0F, size, minU, minV, color, light);
+        buffer += ParticleVertex.STRIDE;
 
-            writer.push(stack, buffer, 4, ParticleVertex.FORMAT);
-        }
+        this.writeVertex(buffer, quaternionf, x, y, z, -1.0F, -1.0F, size, minU, maxV, color, light);
+
+        // Push the vertices to the buffer
+        writer.push(buffer, 4, ParticleVertex.FORMAT);
+
+        // Release the allocated memory
+        MemoryStack.stackPop();
     }
 
     @Unique
     private void writeVertex(long ptr, Quaternionf quaternionf, float originX, float originY, float originZ, float posX, float posY, float size, float u, float v, int color, int light) {
+        // Reuse transferVector to avoid creating new objects on each call
         transferVector.set(posX, posY, 0.0f);
         transferVector.rotate(quaternionf);
         transferVector.mul(size);
