@@ -1,5 +1,6 @@
 package me.jellysquid.mods.sodium.client.render.immediate.model;
 
+import me.jellysquid.mods.sodium.client.render.immediate.model.AABB;
 import net.minecraft.util.math.Direction;
 import org.joml.*;
 
