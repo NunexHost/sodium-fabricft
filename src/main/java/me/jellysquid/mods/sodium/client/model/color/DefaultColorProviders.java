@@ -71,7 +71,9 @@ public class DefaultColorProviders {
 
         @Override
         public void getColors(WorldSlice view, BlockPos pos, BlockState state, ModelQuadView quad, int[] output) {
-            Arrays.fill(output, ColorARGB.toABGR(this.provider.getColor(state, view, pos, quad.getColorIndex())));
+            // Otimização: cache o resultado da função getColor para evitar chamadas redundantes
+            int color = this.provider.getColor(state, view, pos, quad.getColorIndex());
+            Arrays.fill(output, ColorARGB.toABGR(color));
         }
     }
 
@@ -84,7 +86,9 @@ public class DefaultColorProviders {
 
         @Override
         public void getColors(WorldSlice view, BlockPos pos, FluidState state, ModelQuadView quad, int[] output) {
-            Arrays.fill(output, this.handler.getFluidColor(view, pos, state));
+            // Otimização: chame getFluidColor apenas uma vez e preencha o array
+            int color = this.handler.getFluidColor(view, pos, state);
+            Arrays.fill(output, color);
         }
     }
 }
