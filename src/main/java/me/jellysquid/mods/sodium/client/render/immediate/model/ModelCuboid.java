@@ -16,6 +16,12 @@ public class ModelCuboid {
 
     public final boolean mirror;
 
+    private final Vector3f min = new Vector3f();
+    private final Vector3f max = new Vector3f();
+
+    // Pre-calculated bounds for fast intersection checks
+    private final AABB bounds = new AABB();
+
     public ModelCuboid(int u, int v,
                        float x1, float y1, float z1,
                        float sizeX, float sizeY, float sizeZ,
@@ -72,9 +78,24 @@ public class ModelCuboid {
         }
 
         this.faces = faces;
+
+        // Pre-calculate bounds for fast intersection checks
+        this.min.set(this.x1, this.y1, this.z1);
+        this.max.set(this.x2, this.y2, this.z2);
+        this.bounds.set(this.min, this.max);
     }
 
     public boolean shouldDrawFace(int quadIndex) {
         return (this.faces & (1 << quadIndex)) != 0;
+    }
+
+    /**
+     * Checks if this cuboid intersects the given AABB.
+     *
+     * @param aabb The AABB to check against.
+     * @return True if the cuboids intersect, false otherwise.
+     */
+    public boolean intersects(AABB aabb) {
+        return this.bounds.intersects(aabb);
     }
 }
