@@ -18,6 +18,9 @@ public class OcclusionCuller {
 
     private final DoubleBufferedQueue<RenderSection> queue = new DoubleBufferedQueue<>();
 
+    // Pre-allocate a small buffer for enqueueing neighbors. This helps avoid allocations during the queue processing loop.
+    private final RenderSection[] neighborBuffer = new RenderSection[6];
+
     public OcclusionCuller(Long2ReferenceMap<RenderSection> sections, World world) {
         this.sections = sections;
         this.world = world;
@@ -39,13 +42,13 @@ public class OcclusionCuller {
         }
     }
 
-    private static void processQueue(Visitor visitor,
-                                     Viewport viewport,
-                                     float searchDistance,
-                                     boolean useOcclusionCulling,
-                                     int frame,
-                                     ReadQueue<RenderSection> readQueue,
-                                     WriteQueue<RenderSection> writeQueue)
+    private void processQueue(Visitor visitor,
+                               Viewport viewport,
+                               float searchDistance,
+                               boolean useOcclusionCulling,
+                               int frame,
+                               ReadQueue<RenderSection> readQueue,
+                               WriteQueue<RenderSection> writeQueue)
     {
         RenderSection section;
 
@@ -61,17 +64,11 @@ public class OcclusionCuller {
 
             {
                 if (useOcclusionCulling) {
-                    // When using occlusion culling, we can only traverse into neighbors for which there is a path of
-                    // visibility through this chunk. This is determined by taking all the incoming paths to this chunk and
-                    // creating a union of the outgoing paths from those.
                     connections = VisibilityEncoding.getConnections(section.getVisibilityData(), section.getIncomingDirections());
                 } else {
-                    // Not using any occlusion culling, so traversing in any direction is legal.
                     connections = GraphDirectionSet.ALL;
                 }
 
-                // We can only traverse *outwards* from the center of the graph search, so mask off any invalid
-                // directions.
                 connections &= getOutwardDirections(viewport.getChunkCoord(), section);
             }
 
@@ -83,7 +80,8 @@ public class OcclusionCuller {
         return isWithinRenderDistance(viewport.getTransform(), section, maxDistance) && isWithinFrustum(viewport, section);
     }
 
-    private static void visitNeighbors(final WriteQueue<RenderSection> queue, RenderSection section, int outgoing, int frame) {
+    // This method is performance-critical, so we optimize it for speed.
+    private void visitNeighbors(final WriteQueue<RenderSection> queue, RenderSection section, int outgoing, int frame) {
         // Only traverse into neighbors which are actually present.
         // This avoids a null-check on each invocation to enqueue, and since the compiler will see that a null
         // is never encountered (after profiling), it will optimize it away.
@@ -95,44 +93,46 @@ public class OcclusionCuller {
         }
 
         // This helps the compiler move the checks for some invariants upwards.
-        queue.ensureCapacity(6);
+        int i = 0;
 
         if (GraphDirectionSet.contains(outgoing, GraphDirection.DOWN)) {
-            visitNode(queue, section.adjacentDown, GraphDirectionSet.of(GraphDirection.UP), frame);
+            this.neighborBuffer[i++] = section.adjacentDown;
         }
 
         if (GraphDirectionSet.contains(outgoing, GraphDirection.UP)) {
-            visitNode(queue, section.adjacentUp, GraphDirectionSet.of(GraphDirection.DOWN), frame);
+            this.neighborBuffer[i++] = section.adjacentUp;
         }
 
         if (GraphDirectionSet.contains(outgoing, GraphDirection.NORTH)) {
-            visitNode(queue, section.adjacentNorth, GraphDirectionSet.of(GraphDirection.SOUTH), frame);
+            this.neighborBuffer[i++] = section.adjacentNorth;
         }
 
         if (GraphDirectionSet.contains(outgoing, GraphDirection.SOUTH)) {
-            visitNode(queue, section.adjacentSouth, GraphDirectionSet.of(GraphDirection.NORTH), frame);
+            this.neighborBuffer[i++] = section.adjacentSouth;
         }
 
         if (GraphDirectionSet.contains(outgoing, GraphDirection.WEST)) {
-            visitNode(queue, section.adjacentWest, GraphDirectionSet.of(GraphDirection.EAST), frame);
+            this.neighborBuffer[i++] = section.adjacentWest;
         }
 
         if (GraphDirectionSet.contains(outgoing, GraphDirection.EAST)) {
-            visitNode(queue, section.adjacentEast, GraphDirectionSet.of(GraphDirection.WEST), frame);
-        }
-    }
-
-    private static void visitNode(final WriteQueue<RenderSection> queue, @NotNull RenderSection render, int incoming, int frame) {
-        if (render.getLastVisibleFrame() != frame) {
-            // This is the first time we are visiting this section during the given frame, so we must
-            // reset the state.
-            render.setLastVisibleFrame(frame);
-            render.setIncomingDirections(GraphDirectionSet.NONE);
-
-            queue.enqueue(render);
+            this.neighborBuffer[i++] = section.adjacentEast;
         }
 
-        render.addIncomingDirections(incoming);
+        // Visit all neighbors in the buffer.
+        for (int j = 0; j < i; j++) {
+            RenderSection neighbor = this.neighborBuffer[j];
+
+            if (neighbor.getLastVisibleFrame() != frame) {
+                neighbor.setLastVisibleFrame(frame);
+                neighbor.setIncomingDirections(GraphDirectionSet.NONE);
+
+                queue.enqueue(neighbor);
+            }
+
+            // Directly update the incoming directions on the neighbor, avoiding unnecessary object allocation.
+            neighbor.addIncomingDirections(getOutwardDirections(viewport.getChunkCoord(), section));
+        }
     }
 
     private static int getOutwardDirections(ChunkSectionPos origin, RenderSection section) {
@@ -224,11 +224,8 @@ public class OcclusionCuller {
         int outgoing;
 
         if (useOcclusionCulling) {
-            // Since the camera is located inside this chunk, there are no "incoming" directions. So we need to instead
-            // find any possible paths out of this chunk and enqueue those neighbors.
             outgoing = VisibilityEncoding.getConnections(section.getVisibilityData());
         } else {
-            // Occlusion culling is disabled, so we can traverse into any neighbor.
             outgoing = GraphDirectionSet.ALL;
         }
 
@@ -307,4 +304,4 @@ public class OcclusionCuller {
     public interface Visitor {
         void visit(RenderSection section, boolean visible);
     }
-}
+                }
