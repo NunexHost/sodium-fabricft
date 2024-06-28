@@ -106,16 +106,34 @@ public class SmoothLightPipeline implements LightPipeline {
      * Flags: IS_ALIGNED, IS_PARTIAL
      */
     private void applyAlignedPartialFace(AoNeighborInfo neighborInfo, ModelQuadView quad, BlockPos pos, Direction dir, QuadLightData out) {
-        for (int i = 0; i < 4; i++) {
-            // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
-            float cx = clamp(quad.getX(i));
-            float cy = clamp(quad.getY(i));
-            float cz = clamp(quad.getZ(i));
+        // Unroll loop for performance
+        float cx0 = clamp(quad.getX(0));
+        float cy0 = clamp(quad.getY(0));
+        float cz0 = clamp(quad.getZ(0));
+        float[] w0 = this.weights;
+        neighborInfo.calculateCornerWeights(cx0, cy0, cz0, w0);
+        this.applyAlignedPartialFaceVertex(pos, dir, w0, 0, out, true);
 
-            float[] weights = this.weights;
-            neighborInfo.calculateCornerWeights(cx, cy, cz, weights);
-            this.applyAlignedPartialFaceVertex(pos, dir, weights, i, out, true);
-        }
+        float cx1 = clamp(quad.getX(1));
+        float cy1 = clamp(quad.getY(1));
+        float cz1 = clamp(quad.getZ(1));
+        float[] w1 = this.weights;
+        neighborInfo.calculateCornerWeights(cx1, cy1, cz1, w1);
+        this.applyAlignedPartialFaceVertex(pos, dir, w1, 1, out, true);
+
+        float cx2 = clamp(quad.getX(2));
+        float cy2 = clamp(quad.getY(2));
+        float cz2 = clamp(quad.getZ(2));
+        float[] w2 = this.weights;
+        neighborInfo.calculateCornerWeights(cx2, cy2, cz2, w2);
+        this.applyAlignedPartialFaceVertex(pos, dir, w2, 2, out, true);
+
+        float cx3 = clamp(quad.getX(3));
+        float cy3 = clamp(quad.getY(3));
+        float cz3 = clamp(quad.getZ(3));
+        float[] w3 = this.weights;
+        neighborInfo.calculateCornerWeights(cx3, cy3, cz3, w3);
+        this.applyAlignedPartialFaceVertex(pos, dir, w3, 3, out, true);
     }
 
     /**
@@ -126,26 +144,47 @@ public class SmoothLightPipeline implements LightPipeline {
      * Flags: !IS_ALIGNED, IS_PARALLEL
      */
     private void applyParallelFace(AoNeighborInfo neighborInfo, ModelQuadView quad, BlockPos pos, Direction dir, QuadLightData out) {
-        for (int i = 0; i < 4; i++) {
-            // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
-            float cx = clamp(quad.getX(i));
-            float cy = clamp(quad.getY(i));
-            float cz = clamp(quad.getZ(i));
+        // Unroll loop for performance
+        float cx0 = clamp(quad.getX(0));
+        float cy0 = clamp(quad.getY(0));
+        float cz0 = clamp(quad.getZ(0));
+        float[] w0 = this.weights;
+        neighborInfo.calculateCornerWeights(cx0, cy0, cz0, w0);
+        this.applyParallelFaceVertex(pos, dir, w0, 0, out);
 
-            float[] weights = this.weights;
-            neighborInfo.calculateCornerWeights(cx, cy, cz, weights);
+        float cx1 = clamp(quad.getX(1));
+        float cy1 = clamp(quad.getY(1));
+        float cz1 = clamp(quad.getZ(1));
+        float[] w1 = this.weights;
+        neighborInfo.calculateCornerWeights(cx1, cy1, cz1, w1);
+        this.applyParallelFaceVertex(pos, dir, w1, 1, out);
 
-            float depth = neighborInfo.getDepth(cx, cy, cz);
+        float cx2 = clamp(quad.getX(2));
+        float cy2 = clamp(quad.getY(2));
+        float cz2 = clamp(quad.getZ(2));
+        float[] w2 = this.weights;
+        neighborInfo.calculateCornerWeights(cx2, cy2, cz2, w2);
+        this.applyParallelFaceVertex(pos, dir, w2, 2, out);
 
-            // If the quad is approximately grid-aligned (not inset) to the other side of the block, avoid unnecessary
-            // computation by treating it is as aligned
-            if (MathHelper.approximatelyEquals(depth, 1.0F)) {
-                this.applyAlignedPartialFaceVertex(pos, dir, weights, i, out, false);
-            } else {
-                // Blend the occlusion factor between the blocks directly beside this face and the blocks above it
-                // based on how inset the face is. This fixes a few issues with blocks such as farmland and paths.
-                this.applyInsetPartialFaceVertex(pos, dir, depth, 1.0f - depth, weights, i, out);
-            }
+        float cx3 = clamp(quad.getX(3));
+        float cy3 = clamp(quad.getY(3));
+        float cz3 = clamp(quad.getZ(3));
+        float[] w3 = this.weights;
+        neighborInfo.calculateCornerWeights(cx3, cy3, cz3, w3);
+        this.applyParallelFaceVertex(pos, dir, w3, 3, out);
+    }
+
+    private void applyParallelFaceVertex(BlockPos pos, Direction dir, float[] w, int i, QuadLightData out) {
+        float depth = this.weights[0];
+
+        // If the quad is approximately grid-aligned (not inset) to the other side of the block, avoid unnecessary
+        // computation by treating it is as aligned
+        if (MathHelper.approximatelyEquals(depth, 1.0F)) {
+            this.applyAlignedPartialFaceVertex(pos, dir, w, i, out, false);
+        } else {
+            // Blend the occlusion factor between the blocks directly beside this face and the blocks above it
+            // based on how inset the face is. This fixes a few issues with blocks such as farmland and paths.
+            this.applyInsetPartialFaceVertex(pos, dir, depth, 1.0f - depth, w, i, out);
         }
     }
 
@@ -153,27 +192,48 @@ public class SmoothLightPipeline implements LightPipeline {
      * Flags: !IS_ALIGNED, !IS_PARALLEL
      */
     private void applyNonParallelFace(AoNeighborInfo neighborInfo, ModelQuadView quad, BlockPos pos, Direction dir, QuadLightData out) {
-        for (int i = 0; i < 4; i++) {
-            // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
-            float cx = clamp(quad.getX(i));
-            float cy = clamp(quad.getY(i));
-            float cz = clamp(quad.getZ(i));
+        // Unroll loop for performance
+        float cx0 = clamp(quad.getX(0));
+        float cy0 = clamp(quad.getY(0));
+        float cz0 = clamp(quad.getZ(0));
+        float[] w0 = this.weights;
+        neighborInfo.calculateCornerWeights(cx0, cy0, cz0, w0);
+        this.applyNonParallelFaceVertex(pos, dir, w0, 0, out);
 
-            float[] weights = this.weights;
-            neighborInfo.calculateCornerWeights(cx, cy, cz, weights);
+        float cx1 = clamp(quad.getX(1));
+        float cy1 = clamp(quad.getY(1));
+        float cz1 = clamp(quad.getZ(1));
+        float[] w1 = this.weights;
+        neighborInfo.calculateCornerWeights(cx1, cy1, cz1, w1);
+        this.applyNonParallelFaceVertex(pos, dir, w1, 1, out);
 
-            float depth = neighborInfo.getDepth(cx, cy, cz);
+        float cx2 = clamp(quad.getX(2));
+        float cy2 = clamp(quad.getY(2));
+        float cz2 = clamp(quad.getZ(2));
+        float[] w2 = this.weights;
+        neighborInfo.calculateCornerWeights(cx2, cy2, cz2, w2);
+        this.applyNonParallelFaceVertex(pos, dir, w2, 2, out);
 
-            // If the quad is approximately grid-aligned (not inset), avoid unnecessary computation by treating it is as aligned
-            if (MathHelper.approximatelyEquals(depth, 0.0F)) {
-                this.applyAlignedPartialFaceVertex(pos, dir, weights, i, out, true);
-            } else if (MathHelper.approximatelyEquals(depth, 1.0F)) {
-                this.applyAlignedPartialFaceVertex(pos, dir, weights, i, out, false);
-            } else {
-                // Blend the occlusion factor between the blocks directly beside this face and the blocks above it
-                // based on how inset the face is. This fixes a few issues with blocks such as farmland and paths.
-                this.applyInsetPartialFaceVertex(pos, dir, depth, 1.0f - depth, weights, i, out);
-            }
+        float cx3 = clamp(quad.getX(3));
+        float cy3 = clamp(quad.getY(3));
+        float cz3 = clamp(quad.getZ(3));
+        float[] w3 = this.weights;
+        neighborInfo.calculateCornerWeights(cx3, cy3, cz3, w3);
+        this.applyNonParallelFaceVertex(pos, dir, w3, 3, out);
+    }
+
+    private void applyNonParallelFaceVertex(BlockPos pos, Direction dir, float[] w, int i, QuadLightData out) {
+        float depth = this.weights[0];
+
+        // If the quad is approximately grid-aligned (not inset), avoid unnecessary computation by treating it is as aligned
+        if (MathHelper.approximatelyEquals(depth, 0.0F)) {
+            this.applyAlignedPartialFaceVertex(pos, dir, w, i, out, true);
+        } else if (MathHelper.approximatelyEquals(depth, 1.0F)) {
+            this.applyAlignedPartialFaceVertex(pos, dir, w, i, out, false);
+        } else {
+            // Blend the occlusion factor between the blocks directly beside this face and the blocks above it
+            // based on how inset the face is. This fixes a few issues with blocks such as farmland and paths.
+            this.applyInsetPartialFaceVertex(pos, dir, depth, 1.0f - depth, w, i, out);
         }
     }
 
@@ -218,9 +278,11 @@ public class SmoothLightPipeline implements LightPipeline {
         float brightness = this.lightCache.getWorld().getBrightness(face, shade);
         float[] br = out.br;
 
-        for (int i = 0; i < br.length; i++) {
-            br[i] *= brightness;
-        }
+        // Unroll loop for performance
+        br[0] *= brightness;
+        br[1] *= brightness;
+        br[2] *= brightness;
+        br[3] *= brightness;
     }
 
     /**
@@ -250,13 +312,7 @@ public class SmoothLightPipeline implements LightPipeline {
      * Clamps the given float to the range [0.0, 1.0].
      */
     private static float clamp(float v) {
-        if (v < 0.0f) {
-            return 0.0f;
-        } else if (v > 1.0f) {
-            return 1.0f;
-        }
-
-        return v;
+        return MathHelper.clamp(v, 0.0f, 1.0f);
     }
 
     /**
@@ -265,5 +321,4 @@ public class SmoothLightPipeline implements LightPipeline {
     private static int getLightMapCoord(float sl, float bl) {
         return (((int) sl & 0xFF) << 16) | ((int) bl & 0xFF);
     }
-
 }
