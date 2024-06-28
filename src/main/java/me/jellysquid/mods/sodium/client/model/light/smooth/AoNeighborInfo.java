@@ -11,26 +11,16 @@ enum AoNeighborInfo {
     DOWN(new Direction[] { Direction.WEST, Direction.EAST, Direction.NORTH, Direction.SOUTH }, 0.5F) {
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
-            final float u = z;
-            final float v = 1.0f - x;
-
-            out[0] = v * u;
-            out[1] = v * (1.0f - u);
-            out[2] = (1.0f - v) * (1.0f - u);
-            out[3] = (1.0f - v) * u;
+            out[0] = (1.0f - x) * z;
+            out[1] = (1.0f - x) * (1.0f - z);
+            out[2] = x * (1.0f - z);
+            out[3] = x * z;
         }
 
         @Override
         public void mapCorners(int[] lm0, float[] ao0, int[] lm1, float[] ao1) {
-            lm1[0] = lm0[0];
-            lm1[1] = lm0[1];
-            lm1[2] = lm0[2];
-            lm1[3] = lm0[3];
-
-            ao1[0] = ao0[0];
-            ao1[1] = ao0[1];
-            ao1[2] = ao0[2];
-            ao1[3] = ao0[3];
+            System.arraycopy(lm0, 0, lm1, 0, 4);
+            System.arraycopy(ao0, 0, ao1, 0, 4);
         }
 
         @Override
@@ -41,13 +31,10 @@ enum AoNeighborInfo {
     UP(new Direction[] { Direction.EAST, Direction.WEST, Direction.NORTH, Direction.SOUTH }, 1.0F) {
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
-            final float u = z;
-            final float v = x;
-
-            out[0] = v * u;
-            out[1] = v * (1.0f - u);
-            out[2] = (1.0f - v) * (1.0f - u);
-            out[3] = (1.0f - v) * u;
+            out[0] = x * z;
+            out[1] = x * (1.0f - z);
+            out[2] = (1.0f - x) * (1.0f - z);
+            out[3] = (1.0f - x) * z;
         }
 
         @Override
@@ -71,13 +58,10 @@ enum AoNeighborInfo {
     NORTH(new Direction[] { Direction.UP, Direction.DOWN, Direction.EAST, Direction.WEST }, 0.8F) {
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
-            final float u = 1.0f - x;
-            final float v = y;
-
-            out[0] = v * u;
-            out[1] = v * (1.0f - u);
-            out[2] = (1.0f - v) * (1.0f - u);
-            out[3] = (1.0f - v) * u;
+            out[0] = y * (1.0f - x);
+            out[1] = y * x;
+            out[2] = (1.0f - y) * x;
+            out[3] = (1.0f - y) * (1.0f - x);
         }
 
         @Override
@@ -101,26 +85,16 @@ enum AoNeighborInfo {
     SOUTH(new Direction[] { Direction.WEST, Direction.EAST, Direction.DOWN, Direction.UP }, 0.8F) {
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
-            final float u = y;
-            final float v = 1.0f - x;
-
-            out[0] = u * v;
-            out[1] = (1.0f - u) * v;
-            out[2] = (1.0f - u) * (1.0f - v);
-            out[3] = u * (1.0f - v);
+            out[0] = y * (1.0f - x);
+            out[1] = (1.0f - y) * (1.0f - x);
+            out[2] = (1.0f - y) * x;
+            out[3] = y * x;
         }
 
         @Override
         public void mapCorners(int[] lm0, float[] ao0, int[] lm1, float[] ao1) {
-            lm1[0] = lm0[0];
-            lm1[1] = lm0[1];
-            lm1[2] = lm0[2];
-            lm1[3] = lm0[3];
-
-            ao1[0] = ao0[0];
-            ao1[1] = ao0[1];
-            ao1[2] = ao0[2];
-            ao1[3] = ao0[3];
+            System.arraycopy(lm0, 0, lm1, 0, 4);
+            System.arraycopy(ao0, 0, ao1, 0, 4);
         }
 
         @Override
@@ -131,13 +105,10 @@ enum AoNeighborInfo {
     WEST(new Direction[] { Direction.UP, Direction.DOWN, Direction.NORTH, Direction.SOUTH }, 0.6F) {
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
-            final float u = z;
-            final float v = y;
-
-            out[0] = v * u;
-            out[1] = v * (1.0f - u);
-            out[2] = (1.0f - v) * (1.0f - u);
-            out[3] = (1.0f - v) * u;
+            out[0] = y * z;
+            out[1] = y * (1.0f - z);
+            out[2] = (1.0f - y) * (1.0f - z);
+            out[3] = (1.0f - y) * z;
         }
 
         @Override
@@ -161,13 +132,10 @@ enum AoNeighborInfo {
     EAST(new Direction[] { Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH }, 0.6F) {
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
-            final float u = z;
-            final float v = 1.0f - y;
-
-            out[0] = v * u;
-            out[1] = v * (1.0f - u);
-            out[2] = (1.0f - v) * (1.0f - u);
-            out[3] = (1.0f - v) * u;
+            out[0] = (1.0f - y) * z;
+            out[1] = (1.0f - y) * (1.0f - z);
+            out[2] = y * (1.0f - z);
+            out[3] = y * z;
         }
 
         @Override
