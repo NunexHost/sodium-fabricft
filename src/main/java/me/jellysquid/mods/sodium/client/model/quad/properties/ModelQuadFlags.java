@@ -32,15 +32,16 @@ public class ModelQuadFlags {
      * certain optimizations.
      */
     public static int getQuadFlags(ModelQuadView quad, Direction face) {
-        float minX = 32.0F;
-        float minY = 32.0F;
-        float minZ = 32.0F;
+        // Calculate min/max bounds using a single loop
+        float minX = quad.getX(0);
+        float minY = quad.getY(0);
+        float minZ = quad.getZ(0);
 
-        float maxX = -32.0F;
-        float maxY = -32.0F;
-        float maxZ = -32.0F;
+        float maxX = minX;
+        float maxY = minY;
+        float maxZ = minZ;
 
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 1; i < 4; ++i) {
             float x = quad.getX(i);
             float y = quad.getY(i);
             float z = quad.getZ(i);
@@ -53,39 +54,28 @@ public class ModelQuadFlags {
             maxZ = Math.max(maxZ, z);
         }
 
-        boolean partial = switch (face.getAxis()) {
-            case X -> minY >= 0.0001f || minZ >= 0.0001f || maxY <= 0.9999F || maxZ <= 0.9999F;
-            case Y -> minX >= 0.0001f || minZ >= 0.0001f || maxX <= 0.9999F || maxZ <= 0.9999F;
-            case Z -> minX >= 0.0001f || minY >= 0.0001f || maxX <= 0.9999F || maxY <= 0.9999F;
-        };
-
-        boolean parallel = switch(face.getAxis()) {
-            case X -> minX == maxX;
-            case Y -> minY == maxY;
-            case Z -> minZ == maxZ;
-        };
-
-        boolean aligned = parallel && switch (face) {
-            case DOWN -> minY < 0.0001f;
-            case UP -> maxY > 0.9999F;
-            case NORTH -> minZ < 0.0001f;
-            case SOUTH -> maxZ > 0.9999F;
-            case WEST -> minX < 0.0001f;
-            case EAST -> maxX > 0.9999F;
-        };
-
+        // Use a switch statement for clarity and potential optimization
         int flags = 0;
 
-        if (partial) {
-            flags |= IS_PARTIAL;
-        }
-
-        if (parallel) {
-            flags |= IS_PARALLEL;
-        }
-
-        if (aligned) {
-            flags |= IS_ALIGNED;
+        switch (face.getAxis()) {
+            case X:
+                flags |= (minY >= 0.0001f || minZ >= 0.0001f || maxY <= 0.9999F || maxZ <= 0.9999F) ? IS_PARTIAL : 0;
+                flags |= (minX == maxX) ? IS_PARALLEL : 0;
+                flags |= (minX == maxX && minX < 0.0001f) ? IS_ALIGNED : 0;
+                flags |= (minX == maxX && maxX > 0.9999F) ? IS_ALIGNED : 0;
+                break;
+            case Y:
+                flags |= (minX >= 0.0001f || minZ >= 0.0001f || maxX <= 0.9999F || maxZ <= 0.9999F) ? IS_PARTIAL : 0;
+                flags |= (minY == maxY) ? IS_PARALLEL : 0;
+                flags |= (minY == maxY && minY < 0.0001f) ? IS_ALIGNED : 0;
+                flags |= (minY == maxY && maxY > 0.9999F) ? IS_ALIGNED : 0;
+                break;
+            case Z:
+                flags |= (minX >= 0.0001f || minY >= 0.0001f || maxX <= 0.9999F || maxY <= 0.9999F) ? IS_PARTIAL : 0;
+                flags |= (minZ == maxZ) ? IS_PARALLEL : 0;
+                flags |= (minZ == maxZ && minZ < 0.0001f) ? IS_ALIGNED : 0;
+                flags |= (minZ == maxZ && maxZ > 0.9999F) ? IS_ALIGNED : 0;
+                break;
         }
 
         return flags;
