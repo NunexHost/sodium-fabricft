@@ -31,8 +31,6 @@ public class SharedQuadIndexBuffer {
             throw new IllegalArgumentException("Tried to reserve storage for more vertices in this buffer than it can hold");
         }
 
-        int primitiveCount = elementCount / ELEMENTS_PER_PRIMITIVE;
-            
         // Create the buffer with the maximum capacity
         this.buffer = commandList.createMutableBuffer();
         allocateStorage(commandList);
