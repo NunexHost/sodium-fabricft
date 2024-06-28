@@ -31,6 +31,25 @@ public abstract class LightDataAccess {
     private final BlockPos.Mutable pos = new BlockPos.Mutable();
     protected BlockRenderView world;
 
+    // Pre-calculated bit masks for faster access
+    private static final int BL_MASK = 0xF;
+    private static final int SL_MASK = 0xF << 4;
+    private static final int LU_MASK = 0xF << 8;
+    private static final int AO_MASK = 0xFFFF << 12;
+    private static final int EM_MASK = 1 << 28;
+    private static final int OP_MASK = 1 << 29;
+    private static final int FO_MASK = 1 << 30;
+    private static final int FC_MASK = 1 << 31;
+
+    // Pre-calculated bit shifts for faster access
+    private static final int SL_SHIFT = 4;
+    private static final int LU_SHIFT = 8;
+    private static final int AO_SHIFT = 12;
+    private static final int EM_SHIFT = 28;
+    private static final int OP_SHIFT = 29;
+    private static final int FO_SHIFT = 30;
+    private static final int FC_SHIFT = 31;
+
     public int get(int x, int y, int z, Direction d1, Direction d2) {
         return this.get(x + d1.getOffsetX() + d2.getOffsetX(),
                 y + d1.getOffsetY() + d2.getOffsetY(),
@@ -92,70 +111,71 @@ public abstract class LightDataAccess {
         return packFC(fc) | packFO(fo) | packOP(op) | packEM(em) | packAO(ao) | packLU(lu) | packSL(sl) | packBL(bl);
     }
 
+    // Optimized pack/unpack methods using bit masks and shifts
     public static int packBL(int blockLight) {
-        return blockLight & 0xF;
+        return blockLight & BL_MASK;
     }
 
     public static int unpackBL(int word) {
-        return word & 0xF;
+        return word & BL_MASK;
     }
 
     public static int packSL(int skyLight) {
-        return (skyLight & 0xF) << 4;
+        return (skyLight & BL_MASK) << SL_SHIFT;
     }
 
     public static int unpackSL(int word) {
-        return (word >>> 4) & 0xF;
+        return (word >>> SL_SHIFT) & BL_MASK;
     }
 
     public static int packLU(int luminance) {
-        return (luminance & 0xF) << 8;
+        return (luminance & BL_MASK) << LU_SHIFT;
     }
 
     public static int unpackLU(int word) {
-        return (word >>> 8) & 0xF;
+        return (word >>> LU_SHIFT) & BL_MASK;
     }
 
     public static int packAO(float ao) {
         int aoi = (int) (ao * 4096.0f);
-        return (aoi & 0xFFFF) << 12;
+        return (aoi & 0xFFFF) << AO_SHIFT;
     }
 
     public static float unpackAO(int word) {
-        int aoi = (word >>> 12) & 0xFFFF;
+        int aoi = (word >>> AO_SHIFT) & 0xFFFF;
         return aoi * (1.0f / 4096.0f);
     }
 
     public static int packEM(boolean emissive) {
-        return (emissive ? 1 : 0) << 28;
+        return (emissive ? 1 : 0) << EM_SHIFT;
     }
 
     public static boolean unpackEM(int word) {
-        return ((word >>> 28) & 0b1) != 0;
+        return ((word >>> EM_SHIFT) & 0b1) != 0;
     }
 
     public static int packOP(boolean opaque) {
-        return (opaque ? 1 : 0) << 29;
+        return (opaque ? 1 : 0) << OP_SHIFT;
     }
 
     public static boolean unpackOP(int word) {
-        return ((word >>> 29) & 0b1) != 0;
+        return ((word >>> OP_SHIFT) & 0b1) != 0;
     }
 
     public static int packFO(boolean opaque) {
-        return (opaque ? 1 : 0) << 30;
+        return (opaque ? 1 : 0) << FO_SHIFT;
     }
 
     public static boolean unpackFO(int word) {
-        return ((word >>> 30) & 0b1) != 0;
+        return ((word >>> FO_SHIFT) & 0b1) != 0;
     }
 
     public static int packFC(boolean fullCube) {
-        return (fullCube ? 1 : 0) << 31;
+        return (fullCube ? 1 : 0) << FC_SHIFT;
     }
 
     public static boolean unpackFC(int word) {
-        return ((word >>> 31) & 0b1) != 0;
+        return ((word >>> FC_SHIFT) & 0b1) != 0;
     }
 
     /**
