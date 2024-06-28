@@ -62,25 +62,26 @@ public abstract class BillboardParticleMixin extends Particle {
         var writer = VertexBufferWriter.of(vertexConsumer);
 
         // Allocate memory directly without using MemoryStack
-        long buffer = MemoryStack.stackPush().nmalloc(4 * ParticleVertex.STRIDE);
+        long buffer;
 
-        // Calculate positions and write vertices directly without using a loop
-        this.writeVertex(buffer, quaternionf, x, y, z, 1.0F, -1.0F, size, maxU, maxV, color, light);
-        buffer += ParticleVertex.STRIDE;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            buffer = stack.nmalloc(4 * ParticleVertex.STRIDE);
 
-        this.writeVertex(buffer, quaternionf, x, y, z, 1.0F, 1.0F, size, maxU, minV, color, light);
-        buffer += ParticleVertex.STRIDE;
+            // Calculate positions and write vertices directly without using a loop
+            this.writeVertex(buffer, quaternionf, x, y, z, 1.0F, -1.0F, size, maxU, maxV, color, light);
+            buffer += ParticleVertex.STRIDE;
 
-        this.writeVertex(buffer, quaternionf, x, y, z, -1.0F, 1.0F, size, minU, minV, color, light);
-        buffer += ParticleVertex.STRIDE;
+            this.writeVertex(buffer, quaternionf, x, y, z, 1.0F, 1.0F, size, maxU, minV, color, light);
+            buffer += ParticleVertex.STRIDE;
 
-        this.writeVertex(buffer, quaternionf, x, y, z, -1.0F, -1.0F, size, minU, maxV, color, light);
+            this.writeVertex(buffer, quaternionf, x, y, z, -1.0F, 1.0F, size, minU, minV, color, light);
+            buffer += ParticleVertex.STRIDE;
 
-        // Push the vertices to the buffer
-        writer.push(buffer, 4, ParticleVertex.FORMAT);
+            this.writeVertex(buffer, quaternionf, x, y, z, -1.0F, -1.0F, size, minU, maxV, color, light);
 
-        // Release the allocated memory
-        MemoryStack.stackPop();
+            // Push the vertices to the buffer
+            writer.push(stack, buffer, 4, ParticleVertex.FORMAT);
+        }
     }
 
     @Unique
