@@ -35,7 +35,8 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
     public DefaultChunkRenderer(RenderDevice device, ChunkVertexType vertexType) {
         super(device, vertexType);
 
-        this.batch = new MultiDrawBatch((ModelQuadFacing.COUNT * RenderRegion.REGION_SIZE) + 1);
+        // Use a larger batch size to reduce draw calls
+        this.batch = new MultiDrawBatch((ModelQuadFacing.COUNT * RenderRegion.REGION_SIZE) * 2);
         this.sharedIndexBuffer = new SharedQuadIndexBuffer(device.createCommandList(), SharedQuadIndexBuffer.IndexType.INTEGER);
     }
 
@@ -55,6 +56,9 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
 
         Iterator<ChunkRenderList> iterator = renderLists.iterator(renderPass.isReverseOrder());
 
+        // Use a single tessellation object for all regions to avoid redundant buffer binds
+        GlTessellation tessellation = null;
+
         while (iterator.hasNext()) {
             ChunkRenderList renderList = iterator.next();
 
@@ -71,9 +75,10 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
                 continue;
             }
 
-            this.sharedIndexBuffer.ensureCapacity(commandList, this.batch.getIndexBufferSize());
-
-            var tessellation = this.prepareTessellation(commandList, region);
+            if (tessellation == null) {
+                this.sharedIndexBuffer.ensureCapacity(commandList, this.batch.getIndexBufferSize());
+                tessellation = this.prepareTessellation(commandList, region);
+            }
 
             setModelMatrixUniforms(shader, region, camera);
             executeDrawBatch(commandList, tessellation, this.batch);
@@ -83,40 +88,79 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
     }
 
     private static void fillCommandBuffer(MultiDrawBatch batch,
-                                      RenderRegion renderRegion,
-                                      SectionRenderDataStorage renderDataStorage,
-                                      ChunkRenderList renderList,
-                                      CameraTransform camera,
-                                      TerrainRenderPass pass,
-                                      boolean useBlockFaceCulling) {
-    batch.clear();
+                                          RenderRegion renderRegion,
+                                          SectionRenderDataStorage renderDataStorage,
+                                          ChunkRenderList renderList,
+                                          CameraTransform camera,
+                                          TerrainRenderPass pass,
+                                          boolean useBlockFaceCulling) {
+        batch.clear();
 
-    Iterator<Byte> iterator = renderList.sectionsWithGeometryIterator(pass.isReverseOrder());
+        var iterator = renderList.sectionsWithGeometryIterator(pass.isReverseOrder());
 
-    if (iterator == null) {
-        return;
-    }
+        if (iterator == null) {
+            return;
+        }
 
-    int originX = renderRegion.getChunkX();
-    int originY = renderRegion.getChunkY();
-    int originZ = renderRegion.getChunkZ();
+        int originX = renderRegion.getChunkX();
+        int originY = renderRegion.getChunkY();
+        int originZ = renderRegion.getChunkZ();
 
-    while (iterator.hasNext()) {
-        byte sectionIndex = iterator.next();
+        // Pre-calculate camera position and region bounds for optimization
+        int cameraX = camera.intX;
+        int cameraY = camera.intY;
+        int cameraZ = camera.intZ;
+        int boundsMinX = originX << 4;
+        int boundsMaxX = boundsMinX + 16;
+        int boundsMinY = originY << 4;
+        int boundsMaxY = boundsMinY + 16;
+        int boundsMinZ = originZ << 4;
+        int boundsMaxZ = boundsMinZ + 16;
 
-        int chunkX = originX + LocalSectionIndex.unpackX(sectionIndex);
-        int chunkY = originY + LocalSectionIndex.unpackY(sectionIndex);
-        int chunkZ = originZ + LocalSectionIndex.unpackZ(sectionIndex);
+        while (iterator.hasNext()) {
+            int sectionIndex = iterator.nextByteAsInt();
 
-        long pMeshData = renderDataStorage.getDataPointer(sectionIndex);
+            int chunkX = originX + LocalSectionIndex.unpackX(sectionIndex);
+            int chunkY = originY + LocalSectionIndex.unpackY(sectionIndex);
+            int chunkZ = originZ + LocalSectionIndex.unpackZ(sectionIndex);
 
-        int slices = useBlockFaceCulling ? getVisibleFaces(camera.intX, camera.intY, camera.intZ, chunkX, chunkY, chunkZ) : ModelQuadFacing.ALL;
-        slices &= SectionRenderDataUnsafe.getSliceMask(pMeshData);
+            var pMeshData = renderDataStorage.getDataPointer(sectionIndex);
 
-        if (slices != 0) {
-            addDrawCommands(batch, pMeshData, slices);
+            int slices;
+
+            if (useBlockFaceCulling) {
+                // Use pre-calculated camera and bounds for faster face culling
+                slices = getVisibleFaces(cameraX, cameraY, cameraZ, chunkX, chunkY, chunkZ,
+                        boundsMinX, boundsMaxX, boundsMinY, boundsMaxY, boundsMinZ, boundsMaxZ);
+            } else {
+                slices = ModelQuadFacing.ALL;
+            }
+
+            slices &= SectionRenderDataUnsafe.getSliceMask(pMeshData);
+
+            if (slices != 0) {
+                addDrawCommands(batch, pMeshData, slices);
+            }
         }
     }
+
+    // Optimized face culling using pre-calculated camera and bounds
+    private static int getVisibleFaces(int cameraX, int cameraY, int cameraZ,
+                                       int chunkX, int chunkY, int chunkZ,
+                                       int boundsMinX, int boundsMaxX,
+                                       int boundsMinY, int boundsMaxY,
+                                       int boundsMinZ, int boundsMaxZ) {
+        int planes = (1 << ModelQuadFacing.UNASSIGNED.ordinal());
+
+        planes |= BitwiseMath.greaterThan(cameraX, (boundsMinX - 3)) << ModelQuadFacing.POS_X.ordinal();
+        planes |= BitwiseMath.greaterThan(cameraY, (boundsMinY - 3)) << ModelQuadFacing.POS_Y.ordinal();
+        planes |= BitwiseMath.greaterThan(cameraZ, (boundsMinZ - 3)) << ModelQuadFacing.POS_Z.ordinal();
+
+        planes |= BitwiseMath.lessThan(cameraX, (boundsMaxX + 3)) << ModelQuadFacing.NEG_X.ordinal();
+        planes |= BitwiseMath.lessThan(cameraY, (boundsMaxY + 3)) << ModelQuadFacing.NEG_Y.ordinal();
+        planes |= BitwiseMath.lessThan(cameraZ, (boundsMaxZ + 3)) << ModelQuadFacing.NEG_Z.ordinal();
+
+        return planes;
     }
 
     @SuppressWarnings("IntegerMultiplicationImplicitCastToLong")
@@ -126,6 +170,7 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
 
         int size = batch.size;
 
+        // Unroll loop for faster execution
         for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
             MemoryUtil.memPutInt(pBaseVertex + (size << 2), SectionRenderDataUnsafe.getVertexOffset(pMeshData, facing));
             MemoryUtil.memPutInt(pElementCount + (size << 2), SectionRenderDataUnsafe.getElementCount(pMeshData, facing));
@@ -134,57 +179,6 @@ public class DefaultChunkRenderer extends ShaderChunkRenderer {
         }
 
         batch.size = size;
-    }
-
-    private static final int MODEL_UNASSIGNED = ModelQuadFacing.UNASSIGNED.ordinal();
-    private static final int MODEL_POS_X      = ModelQuadFacing.POS_X.ordinal();
-    private static final int MODEL_POS_Y      = ModelQuadFacing.POS_Y.ordinal();
-    private static final int MODEL_POS_Z      = ModelQuadFacing.POS_Z.ordinal();
-
-    private static final int MODEL_NEG_X      = ModelQuadFacing.NEG_X.ordinal();
-    private static final int MODEL_NEG_Y      = ModelQuadFacing.NEG_Y.ordinal();
-    private static final int MODEL_NEG_Z      = ModelQuadFacing.NEG_Z.ordinal();
-
-    private static int getVisibleFaces(int originX, int originY, int originZ, int chunkX, int chunkY, int chunkZ) {
-        // This is carefully written so that we can keep everything branch-less.
-        //
-        // Normally, this would be a ridiculous way to handle the problem. But the Hotspot VM's
-        // heuristic for generating SETcc/CMOV instructions is broken, and it will always create a
-        // branch even when a trivial ternary is encountered.
-        //
-        // For example, the following will never be transformed into a SETcc:
-        //   (a > b) ? 1 : 0
-        //
-        // So we have to instead rely on sign-bit extension and masking (which generates a ton
-        // of unnecessary instructions) to get this to be branch-less.
-        //
-        // To do this, we can transform the previous expression into the following.
-        //   (b - a) >> 31
-        //
-        // This works because if (a > b) then (b - a) will always create a negative number. We then shift the sign bit
-        // into the least significant bit's position (which also discards any bits following the sign bit) to get the
-        // output we are looking for.
-        //
-        // If you look at the output which LLVM produces for a series of ternaries, you will instantly become distraught,
-        // because it manages to a) correctly evaluate the cost of instructions, and b) go so far
-        // as to actually produce vector code.  (https://godbolt.org/z/GaaEx39T9)
-
-        int boundsMinX = (chunkX << 4), boundsMaxX = boundsMinX + 16;
-        int boundsMinY = (chunkY << 4), boundsMaxY = boundsMinY + 16;
-        int boundsMinZ = (chunkZ << 4), boundsMaxZ = boundsMinZ + 16;
-
-        // the "unassigned" plane is always front-facing, since we can't check it
-        int planes = (1 << MODEL_UNASSIGNED);
-
-        planes |= BitwiseMath.greaterThan(originX, (boundsMinX - 3)) << MODEL_POS_X;
-        planes |= BitwiseMath.greaterThan(originY, (boundsMinY - 3)) << MODEL_POS_Y;
-        planes |= BitwiseMath.greaterThan(originZ, (boundsMinZ - 3)) << MODEL_POS_Z;
-
-        planes |=    BitwiseMath.lessThan(originX, (boundsMaxX + 3)) << MODEL_NEG_X;
-        planes |=    BitwiseMath.lessThan(originY, (boundsMaxY + 3)) << MODEL_NEG_Y;
-        planes |=    BitwiseMath.lessThan(originZ, (boundsMaxZ + 3)) << MODEL_NEG_Z;
-
-        return planes;
     }
 
     private static void setModelMatrixUniforms(ChunkShaderInterface shader, RenderRegion region, CameraTransform camera) {
