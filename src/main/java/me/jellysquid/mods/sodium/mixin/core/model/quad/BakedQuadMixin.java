@@ -50,9 +50,9 @@ public class BakedQuadMixin implements BakedQuadView {
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void init(int[] vertexData, int colorIndex, Direction face, Sprite sprite, boolean shade, CallbackInfo ci) {
+        // Pre-compute and cache values for performance
         this.normal = ModelQuadUtil.calculateNormal(this);
         this.normalFace = ModelQuadUtil.findNormalFace(this.normal);
-
         this.flags = ModelQuadFlags.getQuadFlags(this, face);
     }
 
